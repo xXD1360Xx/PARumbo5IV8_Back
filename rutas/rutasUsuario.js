@@ -3,7 +3,6 @@ import { autenticarUsuario } from '../middleware/autenticacionMiddleware.js';
 import { 
   obtenerPerfilUsuario,
   actualizarPerfilUsuario,
-  obtenerConfiguracionUsuario 
 } from '../controladores/usuarioControlador.js';
 
 const router = express.Router();
@@ -96,55 +95,6 @@ router.put('/perfil', autenticarUsuario, async (req, res) => {
     res.status(500).json({ 
       exito: false, 
       error: 'Error al actualizar el perfil' 
-    });
-  }
-});
-
-// GET /usuario/configuracion - Obtener configuración del usuario
-router.get('/configuracion', autenticarUsuario, async (req, res) => {
-  try {
-    const usuarioId = req.usuario.id;
-    const configuracion = await obtenerConfiguracionUsuario(usuarioId);
-    
-    res.json({ 
-      exito: true, 
-      datos: configuracion,
-      mensaje: 'Configuración obtenida exitosamente'
-    });
-  } catch (error) {
-    console.error('Error al obtener configuración:', error);
-    res.status(500).json({ 
-      exito: false, 
-      error: 'Error al obtener la configuración' 
-    });
-  }
-});
-
-// PUT /usuario/configuracion - Actualizar configuración del usuario
-router.put('/configuracion', autenticarUsuario, async (req, res) => {
-  try {
-    const usuarioId = req.usuario.id;
-    const { notificaciones, privacidad, tema } = req.body;
-    
-    const configuracion = {
-      notificaciones,
-      privacidad,
-      tema
-    };
-
-    // Aquí iría la lógica para guardar la configuración
-    // const configActualizada = await guardarConfiguracionUsuario(usuarioId, configuracion);
-    
-    res.json({ 
-      exito: true, 
-      datos: configuracion,
-      mensaje: 'Configuración actualizada exitosamente'
-    });
-  } catch (error) {
-    console.error('Error al actualizar configuración:', error);
-    res.status(500).json({ 
-      exito: false, 
-      error: 'Error al actualizar la configuración' 
     });
   }
 });

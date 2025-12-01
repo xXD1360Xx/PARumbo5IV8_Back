@@ -172,6 +172,50 @@ router.post('/logout', autenticarUsuario, (req, res) => {
   });
 });
 
+// POST /autenticacion/cambiar-contrasena - Cambiar contraseña
+router.post('/cambiar-contrasena', autenticarUsuario, async (req, res) => {
+  const { contrasenaActual, nuevaContrasena } = req.body;
+  const usuarioId = req.usuario.id;
+  
+  if (!contrasenaActual || !nuevaContrasena) {
+    return res.status(400).json({ 
+      exito: false, 
+      error: 'Contraseña actual y nueva contraseña son requeridas' 
+    });
+  }
+  
+  // Validar que la nueva contraseña sea segura
+  const regex = /^(?=.*\d).{6,}$/;
+  if (!regex.test(nuevaContrasena)) {
+    return res.status(400).json({
+      exito: false,
+      error: 'La contraseña debe tener al menos 6 caracteres y contener al menos un número'
+    });
+  }
+  
+  try {
+    const resultado = await cambiarContrasena(usuarioId, contrasenaActual, nuevaContrasena);
+    
+    if (resultado.exito) {
+      return res.json({
+        exito: true,
+        mensaje: 'Contraseña actualizada correctamente'
+      });
+    } else {
+      return res.status(400).json({
+        exito: false,
+        error: resultado.error
+      });
+    }
+  } catch (error) {
+    console.error('Error al cambiar contraseña:', error);
+    return res.status(500).json({ 
+      exito: false, 
+      error: 'Error del servidor al cambiar contraseña' 
+    });
+  }
+});
+
 // GET /autenticacion/verificar - Verificar token
 router.get('/verificar', autenticarUsuario, (req, res) => {
   res.json({

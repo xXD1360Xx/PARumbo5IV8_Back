@@ -3,11 +3,31 @@ import { autenticarUsuario } from '../middleware/autenticacionMiddleware.js';
 import { 
   obtenerResultadosTests, 
   obtenerDetallesTest,
-  insertarResultadoTest,
   obtenerEstadisticasTests 
 } from '../controladores/testsControlador.js';
+import { pool } from '../configuracion/baseDeDatos.js';
+
 
 const router = express.Router();
+
+// GET /api/tests/historial/:usuarioId - Para el frontend
+router.get('/historial/:usuarioId', autenticarUsuario, async (req, res) => {
+  try {
+    const { usuarioId } = req.params;
+    const resultados = await obtenerResultadosTests(usuarioId);
+    
+    res.json({ 
+      exito: true, 
+      historial: resultados
+    });
+  } catch (error) {
+    console.error('Error al obtener resultados:', error);
+    res.status(500).json({ 
+      exito: false, 
+      error: 'Error al obtener el historial de tests' 
+    });
+  }
+});
 
 // GET /tests/mis-resultados - Obtener todos los resultados del usuario
 router.get('/mis-resultados', autenticarUsuario, async (req, res) => {
@@ -64,34 +84,6 @@ router.get('/:testId', autenticarUsuario, async (req, res) => {
   }
 });
 
-// POST /tests/nuevo-resultado - Insertar nuevo resultado de test
-router.post('/nuevo-resultado', autenticarUsuario, async (req, res) => {
-  try {
-    const usuarioId = req.usuario.id;
-    const { testId, puntuacion, areas } = req.body;
-    
-    if (!testId || !puntuacion) {
-      return res.status(400).json({
-        exito: false,
-        error: 'testId y puntuacion son requeridos'
-      });
-    }
-
-    const resultado = await insertarResultadoTest(usuarioId, testId, puntuacion, areas);
-    
-    res.status(201).json({ 
-      exito: true, 
-      datos: resultado,
-      mensaje: 'Resultado guardado exitosamente'
-    });
-  } catch (error) {
-    console.error('Error al insertar resultado:', error);
-    res.status(500).json({ 
-      exito: false, 
-      error: 'Error al guardar el resultado del test' 
-    });
-  }
-});
 
 // GET /tests/estadisticas - Obtener estadísticas del usuario
 router.get('/estadisticas/generales', autenticarUsuario, async (req, res) => {
@@ -123,7 +115,6 @@ router.get('/', autenticarUsuario, async (req, res) => {
       ORDER BY nombre
     `;
     
-    const { pool } = await import('../configuracion/baseDeDatos.js');
     const resultado = await pool.query(consulta);
     
     res.json({ 
