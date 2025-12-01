@@ -9,7 +9,7 @@ import bodyParser from "body-parser";
 import sgMail from "@sendgrid/mail";
 
 // 🧠 Importar las rutas de autenticación
-import rutasAutenticacion from "./rutas/autenticacionRutas.js";
+import rutasAutenticacion from "./rutas/rutasAutenticacion.js";
 
 const app = express();
 
