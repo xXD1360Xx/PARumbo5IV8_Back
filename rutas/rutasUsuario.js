@@ -3,7 +3,12 @@ import { autenticarUsuario } from '../middleware/autenticacionMiddleware.js';
 import { 
   obtenerPerfilUsuario,
   actualizarPerfilUsuario,
+  obtenerDatosDashboard,           // ✅ Nueva función importada
+  obtenerConfiguracionUsuario,     // ✅ Si la necesitas
+  buscarUsuarios,                  // ✅ Para funcionalidad de búsqueda
+  verificarUsuarioExiste           // ✅ Para validaciones
 } from '../controladores/usuarioControlador.js';
+// ⚠️ ELIMINADO: import dinámico de pool en la ruta
 
 const router = express.Router();
 
@@ -39,10 +44,10 @@ router.get('/perfil/:usuarioId', async (req, res) => {
   try {
     const { usuarioId } = req.params;
     
-    if (!usuarioId) {
+    if (!usuarioId || usuarioId.length < 10) {
       return res.status(400).json({
         exito: false,
-        error: 'ID de usuario es requerido'
+        error: 'ID de usuario inválido'
       });
     }
 
@@ -73,9 +78,13 @@ router.get('/perfil/:usuarioId', async (req, res) => {
 router.put('/perfil', autenticarUsuario, async (req, res) => {
   try {
     const usuarioId = req.usuario.id;
-    const { nombreCompleto, bio, avatarUrl, bannerUrl, configuraciones } = req.body;
+    const { nombre, biografia, foto_perfil, portada, nombreCompleto, bio, avatarUrl, bannerUrl, configuraciones } = req.body;
     
     const datosActualizacion = {
+      nombre,
+      biografia,
+      foto_perfil,
+      portada,
       nombreCompleto,
       bio,
       avatarUrl,
@@ -99,47 +108,13 @@ router.put('/perfil', autenticarUsuario, async (req, res) => {
   }
 });
 
-// GET /usuario/dashboard - Obtener datos para el dashboard
+// GET /usuario/dashboard - Obtener datos para el dashboard (CORREGIDO)
 router.get('/dashboard', autenticarUsuario, async (req, res) => {
   try {
     const usuarioId = req.usuario.id;
     
-    // Consultas para el dashboard
-    const consultas = {
-      testsCompletados: `
-        SELECT COUNT(*) as total 
-        FROM resultados_test 
-        WHERE usuario_id = $1
-      `,
-      promedioGeneral: `
-        SELECT AVG(puntuacion) as promedio 
-        FROM resultados_test 
-        WHERE usuario_id = $1
-      `,
-      ultimoTest: `
-        SELECT t.nombre, r.puntuacion, r.fecha_realizacion
-        FROM resultados_test r
-        JOIN tests_vocacionales t ON r.test_id = t.id
-        WHERE r.usuario_id = $1
-        ORDER BY r.fecha_realizacion DESC
-        LIMIT 1
-      `
-    };
-
-    const { pool } = await import('../configuracion/baseDeDatos.js');
+    const dashboardData = await obtenerDatosDashboard(usuarioId);  // ✅ Usa función del controlador
     
-    const [testsCompletados, promedioGeneral, ultimoTest] = await Promise.all([
-      pool.query(consultas.testsCompletados, [usuarioId]),
-      pool.query(consultas.promedioGeneral, [usuarioId]),
-      pool.query(consultas.ultimoTest, [usuarioId])
-    ]);
-
-    const dashboardData = {
-      testsCompletados: parseInt(testsCompletados.rows[0].total),
-      promedioGeneral: parseFloat(promedioGeneral.rows[0].promedio) || 0,
-      ultimoTest: ultimoTest.rows[0] || null
-    };
-
     res.json({ 
       exito: true, 
       datos: dashboardData,
@@ -150,6 +125,83 @@ router.get('/dashboard', autenticarUsuario, async (req, res) => {
     res.status(500).json({ 
       exito: false, 
       error: 'Error al obtener datos del dashboard' 
+    });
+  }
+});
+
+// GET /usuario/configuracion - Obtener configuración del usuario
+router.get('/configuracion', autenticarUsuario, async (req, res) => {
+  try {
+    const usuarioId = req.usuario.id;
+    const configuracion = await obtenerConfiguracionUsuario(usuarioId);
+    
+    res.json({ 
+      exito: true, 
+      datos: configuracion,
+      mensaje: 'Configuración obtenida exitosamente'
+    });
+  } catch (error) {
+    console.error('Error al obtener configuración:', error);
+    res.status(500).json({ 
+      exito: false, 
+      error: 'Error al obtener configuración' 
+    });
+  }
+});
+
+// GET /usuario/buscar - Buscar usuarios
+router.get('/buscar', autenticarUsuario, async (req, res) => {
+  try {
+    const { q, limite = 10 } = req.query;
+    
+    if (!q || q.length < 2) {
+      return res.status(400).json({
+        exito: false,
+        error: 'Término de búsqueda demasiado corto (mínimo 2 caracteres)'
+      });
+    }
+
+    const resultados = await buscarUsuarios(q, parseInt(limite));
+    
+    res.json({ 
+      exito: true, 
+      datos: resultados,
+      mensaje: 'Búsqueda completada exitosamente',
+      total: resultados.length
+    });
+  } catch (error) {
+    console.error('Error en búsqueda de usuarios:', error);
+    res.status(500).json({ 
+      exito: false, 
+      error: 'Error al buscar usuarios' 
+    });
+  }
+});
+
+// GET /usuario/verificar/:usuarioId - Verificar si un usuario existe
+router.get('/verificar/:usuarioId', async (req, res) => {
+  try {
+    const { usuarioId } = req.params;
+    
+    if (!usuarioId || usuarioId.length < 10) {
+      return res.status(400).json({
+        exito: false,
+        error: 'ID de usuario inválido'
+      });
+    }
+
+    const existe = await verificarUsuarioExiste(usuarioId);
+    
+    res.json({ 
+      exito: true, 
+      datos: { existe },
+      mensaje: existe ? 'Usuario encontrado' : 'Usuario no encontrado'
+    });
+  } catch (error) {
+    console.error('Error al verificar usuario:', error);
+    res.status(500).json({ 
+      exito: false, 
+      error: 'Error al verificar usuario' 
     });
   }
 });

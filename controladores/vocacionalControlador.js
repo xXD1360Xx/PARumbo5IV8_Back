@@ -1,4 +1,4 @@
-import { pool } from '../configuracion/baseDeDatos.js';
+import { pool } from '../configuracion/basedeDatos.js';
 
 // Obtener todos los resultados vocacionales de un usuario
 export const obtenerResultadosVocacionales = async (usuarioId) => {

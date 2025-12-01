@@ -1,5 +1,5 @@
 import axios from "axios";
-import { pool } from '../configuracion/baseDeDatos.js';
+import { pool } from '../configuracion/basedeDatos.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 

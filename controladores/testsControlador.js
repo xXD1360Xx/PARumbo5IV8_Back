@@ -1,4 +1,4 @@
-import { pool } from '../configuracion/baseDeDatos.js';
+import { pool } from '../configuracion/basedeDatos.js';
 
 // Obtener resultados de tests de un usuario
 export const obtenerResultadosTests = async (usuarioId) => {
@@ -28,6 +28,24 @@ export const obtenerDetallesTest = async (testId) => {
     return result.rows[0] || null;
   } catch (error) {
     console.error('Error en obtenerDetallesTest:', error);
+    throw error;
+  }
+};
+
+// Obtener todos los tests disponibles
+export const obtenerTestsDisponibles = async () => {
+  try {
+    const consulta = `
+      SELECT id, nombre, descripcion, duracion, preguntas_total, fecha_creacion
+      FROM tests_vocacionales 
+      WHERE activo = true
+      ORDER BY nombre
+    `;
+    
+    const resultado = await pool.query(consulta);
+    return resultado.rows;
+  } catch (error) {
+    console.error('Error en obtenerTestsDisponibles:', error);
     throw error;
   }
 };
@@ -71,9 +89,13 @@ export const obtenerEstadisticasTests = async (usuarioId) => {
     `;
     const result = await pool.query(query, [usuarioId]);
     
+    // Calcular total sumando todos los tests individuales
+    const total = result.rows.reduce((sum, row) => sum + parseInt(row.cantidad_por_test), 0);
+    const promedio = result.rows[0] ? parseFloat(result.rows[0].promedio_general) : 0;
+    
     return {
-      total_tests: parseInt(result.rows.reduce((sum, row) => sum + parseInt(row.cantidad_por_test), 0)),
-      promedio_general: parseFloat(result.rows[0]?.promedio_general) || 0,
+      total_tests: total,
+      promedio_general: promedio,
       distribucion_tests: result.rows.map(row => ({
         test_id: row.test_id,
         cantidad: parseInt(row.cantidad_por_test),
@@ -82,6 +104,23 @@ export const obtenerEstadisticasTests = async (usuarioId) => {
     };
   } catch (error) {
     console.error('Error en obtenerEstadisticasTests:', error);
+    throw error;
+  }
+};
+
+// Eliminar resultado de test
+export const eliminarResultadoTest = async (id, usuarioId) => {
+  try {
+    const query = `
+      DELETE FROM user_test_results 
+      WHERE id = $1 AND usuario_id = $2 
+      RETURNING id
+    `;
+    
+    const result = await pool.query(query, [id, usuarioId]);
+    return result.rows.length > 0;
+  } catch (error) {
+    console.error('Error en eliminarResultadoTest:', error);
     throw error;
   }
 };
