@@ -1,4 +1,4 @@
-// configuration/basedeDatos.js
+// baseDeDatos.js
 import pkg from 'pg';
 import dotenv from 'dotenv';
 
