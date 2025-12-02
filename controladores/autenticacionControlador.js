@@ -6,7 +6,6 @@ import jwt from 'jsonwebtoken';
 // Login normal (usuario/contraseña)
 export const iniciarSesion = async (identificador, contrasena) => {
   try {
-    // Buscar usuario por email o nombre de usuario
     const query = `
       SELECT * FROM usuarios 
       WHERE email = $1 OR nombre_usuario = $1
@@ -24,12 +23,24 @@ export const iniciarSesion = async (identificador, contrasena) => {
       return { exito: false, error: 'Contraseña incorrecta' };
     }
     
-    // Eliminar contraseña del objeto de respuesta
     const { contrasena_hash, ...usuarioSinPassword } = usuario;
+    
+    // 🆕 Generar token aquí también para consistencia
+    const JWT_SECRETO = process.env.JWT_SECRETO || 'tu_secreto_jwt';
+    const token = jwt.sign(
+      { 
+        id: usuario.id, 
+        email: usuario.email,
+        rol: usuario.rol 
+      },
+      JWT_SECRETO,
+      { expiresIn: '24h' }
+    );
     
     return { 
       exito: true, 
-      usuario: usuarioSinPassword 
+      usuario: usuarioSinPassword,
+      token: token  // ← Agregar token
     };
     
   } catch (error) {

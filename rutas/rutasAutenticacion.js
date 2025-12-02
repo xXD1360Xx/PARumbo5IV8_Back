@@ -25,27 +25,21 @@ router.post('/login', async (req, res) => {
     const resultado = await iniciarSesion(identificador, contrasena);
     
     if (resultado.exito) {
-      const { id, rol, email } = resultado.usuario;
+      const token = resultado.token;  // ← Usa el token del controlador
       
-      // Generar token JWT
-      const token = jwt.sign(
-        { id, rol, email }, 
-        process.env.JWT_SECRETO, 
-        { expiresIn: '24h' }
-      );
-
       // Configurar cookie
       res.cookie('token', token, { 
         httpOnly: true, 
         secure: process.env.ENTORNO === 'produccion',
         sameSite: process.env.ENTORNO === 'produccion' ? 'none' : 'lax',
-        maxAge: 24 * 60 * 60 * 1000, // 24 horas
+        maxAge: 24 * 60 * 60 * 1000,
         path: '/'
       });
 
       return res.json({
         exito: true,
         usuario: resultado.usuario,
+        token: token,  // ← ¡Agrega esto también!
         mensaje: 'Inicio de sesión exitoso'
       });
     } else {
@@ -105,10 +99,10 @@ router.post('/registro', async (req, res) => {
 
 // POST /autenticacion/google - Login con Google
 router.post('/google', async (req, res) => {
-  const { access_token } = req.body;  // ← Recibe access_token
+  const { access_token } = req.body;
   
-  if (!access_token) {  // ← Verifica access_token (NO tokenGoogle)
-    console.error("❌ [RUTA] No se recibió access_token en body:", req.body);
+  if (!access_token) {
+    console.error("❌ [RUTA] No se recibió access_token");
     return res.status(400).json({ 
       exito: false, 
       error: 'Token de Google es requerido' 
@@ -118,17 +112,15 @@ router.post('/google', async (req, res) => {
   console.log("🔍 [RUTA] Token recibido:", access_token?.substring(0, 20) + '...');
   
   try {
-    const resultado = await loginConGoogle(access_token);  // ← Pasa access_token
+    const resultado = await loginConGoogle(access_token);
     
     if (resultado.exito) {
       const { id, rol, email } = resultado.usuario;
       
-      // Generar token JWT
-      const token = jwt.sign(
-        { id, rol, email }, 
-        process.env.JWT_SECRETO, 
-        { expiresIn: '24h' }
-      );
+      // 🚨 ¡CRÍTICO! El controlador YA generó un token, NO generar otro
+      const token = resultado.token;  // ← Usa el token del controlador
+      
+      console.log("✅ [RUTA] Token JWT recibido del controlador:", token?.substring(0, 20) + '...');
 
       // Configurar cookie
       res.cookie('token', token, { 
@@ -139,9 +131,11 @@ router.post('/google', async (req, res) => {
         path: '/'
       });
 
+      // 🚨 ¡IMPORTANTE! Devuelve el token en la respuesta JSON
       return res.json({
         exito: true,
         usuario: resultado.usuario,
+        token: token,  // ← ¡¡¡AGREGA ESTO!!!
         mensaje: 'Inicio de sesión con Google exitoso'
       });
     } else {
