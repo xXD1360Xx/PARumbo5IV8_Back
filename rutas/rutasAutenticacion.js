@@ -2,8 +2,8 @@ import express from 'express';
 import { 
   iniciarSesion, 
   registrarUsuario, 
-  cerrarSesion,
-  loginConGoogle
+  loginConGoogle,
+  cambiarContrasena  
 } from '../controladores/autenticacionControlador.js';
 import { autenticarUsuario } from '../middleware/autenticacionMiddleware.js';
 import jwt from 'jsonwebtoken';

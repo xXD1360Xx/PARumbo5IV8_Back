@@ -112,13 +112,12 @@ export const cambiarContrasena = async (usuarioId, contrasenaActual, nuevaContra
   }
 };
 
-// Login con Google - VERSIÓN CON DEBUG
 // Login con Google - VERSIÓN CORREGIDA
+// En tu controlador de Google login
 export const loginConGoogle = async (accessToken) => {
   try {
     console.log("🔍 [BACKEND CONTROLADOR] Token recibido:", accessToken?.substring(0, 30) + '...');
     
-    // Verificar que el token no esté vacío
     if (!accessToken || accessToken.trim() === '') {
       console.error("❌ [BACKEND] Token vacío o inválido");
       return { exito: false, error: 'Token inválido' };
@@ -130,7 +129,7 @@ export const loginConGoogle = async (accessToken) => {
     const respuesta = await axios.get(
       `https://www.googleapis.com/oauth2/v1/userinfo?alt=json&access_token=${accessToken}`,
       {
-        timeout: 10000, // 10 segundos timeout
+        timeout: 10000,
         headers: {
           'Authorization': `Bearer ${accessToken}`,
           'Accept': 'application/json'
@@ -148,17 +147,15 @@ export const loginConGoogle = async (accessToken) => {
     const query = 'SELECT * FROM usuarios WHERE email = $1';
     const result = await pool.query(query, [respuesta.data.email]);
     
+    let usuario;
+    
     if (result.rows.length > 0) {
-      // Usuario existe, devolverlo
-      const usuario = result.rows[0];
+      // Usuario existe
+      usuario = result.rows[0];
       const { contrasena_hash, ...usuarioSinPassword } = usuario;
-      
-      return {  // ← DEVUELVE objeto, NO res.json()
-        exito: true, 
-        usuario: usuarioSinPassword 
-      };
+      usuario = usuarioSinPassword;
     } else {
-      // Crear nuevo usuario si no existe
+      // Crear nuevo usuario
       const nombreUsuario = respuesta.data.name.toLowerCase().replace(/\s+/g, '_') + '_' + Math.floor(Math.random() * 10000);
       
       const insertQuery = `
@@ -174,11 +171,28 @@ export const loginConGoogle = async (accessToken) => {
         respuesta.data.picture || 'https://res.cloudinary.com/de8qn7bm1/image/upload/v1762320292/Default_pfp.svg_j0obpx.png'
       ]);
       
-      return {  // ← DEVUELVE objeto, NO res.json()
-        exito: true, 
-        usuario: nuevoUsuario.rows[0] 
-      };
+      usuario = nuevoUsuario.rows[0];
     }
+    
+    // 🔴 CRÍTICO: Generar un token JWT para tu app
+    const JWT_SECRETO = process.env.JWT_SECRETO || 'tu_secreto_jwt'; // Asegúrate de configurar esto
+    const token = jwt.sign(
+      { 
+        id: usuario.id, 
+        email: usuario.email,
+        rol: usuario.rol 
+      },
+      JWT_SECRETO,
+      { expiresIn: '7d' }
+    );
+    
+    console.log("✅ [BACKEND] Token JWT generado:", token.substring(0, 30) + '...');
+    
+    return {  // ← AHORA INCLUYE EL TOKEN
+      exito: true, 
+      usuario: usuario,
+      token: token  // ← AÑADE ESTO
+    };
     
   } catch (error) {
     console.error('❌ [BACKEND CONTROLADOR] Error COMPLETO:', {
