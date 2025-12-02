@@ -19,29 +19,15 @@ const app = express();
 // 🔑 Configurar SendGrid
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
-// ⚙️ Middlewares
+// ⚙️ Middlewares - CORS PERMITIENDO TODO 🚀
+console.log("🔥 CORS: PERMITIENDO TODO - Modo desarrollo escolar");
 app.use(cors({
-  origin: [
-    // Patrones para Expo tunnels
-    /https?:\/\/.*\.exp\.direct$/,
-    /https?:\/\/.*\.exp\.host$/,
-    /https?:\/\/.*\.expo\.dev$/,
-    
-    // Desarrollo local
-    /https?:\/\/localhost:\d+$/,
-    /https?:\/\/192\.168\.\d+\.\d+:\d+$/,
-    
-    // Web development
-    'http://localhost:19006',
-    'https://localhost:19006',
-    
-    // Tu dominio de producción (si lo tienes)
-    process.env.ORIGEN_FRONTEND
-  ].filter(Boolean),
+  origin: true,  // ✅ ESTO PERMITE CUALQUIER ORIGEN
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Cookie']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'X-Requested-With', 'Accept', 'Origin']
 }));
+
 app.use(bodyParser.json());
 app.use(express.json());
 
@@ -57,7 +43,8 @@ app.get("/ping", (req, res) => {
     status: "ok", 
     message: "pong",
     timestamp: new Date().toISOString(),
-    environment: process.env.ENTORNO || 'development'
+    environment: process.env.ENTORNO || 'development',
+    cors: "PERMITIENDO TODO (modo desarrollo)"
   });
 });
 
@@ -103,6 +90,7 @@ app.get("/health", async (req, res) => {
       uptime: process.uptime(),
       memory: process.memoryUsage(),
       environment: process.env.ENTORNO || 'development',
+      cors: "🔓 PERMITIENDO TODOS LOS ORÍGENES",
       database: "connected",
       services: {
         sendgrid: process.env.SENDGRID_API_KEY ? "configured" : "not_configured",
@@ -139,9 +127,14 @@ app.use((error, req, res, next) => {
 // 🖥️ Iniciar servidor
 const PUERTO = process.env.PORT || 3000;
 app.listen(PUERTO, "0.0.0.0", () => {
-  console.log(`✅ Servidor corriendo en puerto ${PUERTO}`);
+  console.log("=".repeat(50));
+  console.log(`✅ Servidor escolar corriendo en puerto ${PUERTO}`);
   console.log(`📍 Entorno: ${process.env.ENTORNO || 'desarrollo'}`);
+  console.log(`🔥 CORS: 🔓 PERMITIENDO TODO - Modo desarrollo`);
   console.log(`🌐 URL: http://localhost:${PUERTO}`);
-  console.log(`🔗 Health check: http://localhost:${PUERTO}/health`);
+  console.log(`🔗 Health: http://localhost:${PUERTO}/health`);
   console.log(`🏓 Ping: http://localhost:${PUERTO}/ping`);
+  console.log("=".repeat(50));
+  console.log("⚠️  ADVERTENCIA: CORS permitiendo todo - Solo para desarrollo");
+  console.log("=".repeat(50));
 });
