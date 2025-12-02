@@ -22,11 +22,20 @@ sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 // ⚙️ Middlewares
 app.use(cors({
   origin: [
+    // Patrones para Expo tunnels
+    /https?:\/\/.*\.exp\.direct$/,
+    /https?:\/\/.*\.exp\.host$/,
+    /https?:\/\/.*\.expo\.dev$/,
+    
+    // Desarrollo local
+    /https?:\/\/localhost:\d+$/,
+    /https?:\/\/192\.168\.\d+\.\d+:\d+$/,
+    
+    // Web development
     'http://localhost:19006',
-    'exp://',
-    'https://expo.dev',
-    'https://*.expo.dev',
-    'http://192.168.*.*:8081',
+    'https://localhost:19006',
+    
+    // Tu dominio de producción (si lo tienes)
     process.env.ORIGEN_FRONTEND
   ].filter(Boolean),
   credentials: true,
