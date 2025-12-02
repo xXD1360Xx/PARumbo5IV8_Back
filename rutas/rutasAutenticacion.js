@@ -105,17 +105,20 @@ router.post('/registro', async (req, res) => {
 
 // POST /autenticacion/google - Login con Google
 router.post('/google', async (req, res) => {
-  const { tokenGoogle } = req.body;
+  const { access_token } = req.body;  // ← Recibe access_token
   
-  if (!tokenGoogle) {
+  if (!access_token) {  // ← Verifica access_token (NO tokenGoogle)
+    console.error("❌ [RUTA] No se recibió access_token en body:", req.body);
     return res.status(400).json({ 
       exito: false, 
       error: 'Token de Google es requerido' 
     });
   }
   
+  console.log("🔍 [RUTA] Token recibido:", access_token?.substring(0, 20) + '...');
+  
   try {
-    const resultado = await loginConGoogle(tokenGoogle);
+    const resultado = await loginConGoogle(access_token);  // ← Pasa access_token
     
     if (resultado.exito) {
       const { id, rol, email } = resultado.usuario;

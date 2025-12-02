@@ -112,33 +112,54 @@ export const cambiarContrasena = async (usuarioId, contrasenaActual, nuevaContra
   }
 };
 
-// Login con Google
-export const loginConGoogle = async (tokenGoogle) => {
+// Login con Google - VERSIÓN CON DEBUG
+// Login con Google - VERSIÓN CORREGIDA
+export const loginConGoogle = async (accessToken) => {
   try {
+    console.log("🔍 [BACKEND CONTROLADOR] Token recibido:", accessToken?.substring(0, 30) + '...');
+    
+    // Verificar que el token no esté vacío
+    if (!accessToken || accessToken.trim() === '') {
+      console.error("❌ [BACKEND] Token vacío o inválido");
+      return { exito: false, error: 'Token inválido' };
+    }
+    
+    console.log("🔍 [BACKEND] Llamando a Google API...");
+    
     // Validar token con Google
     const respuesta = await axios.get(
-      `https://www.googleapis.com/oauth2/v1/userinfo?alt=json&access_token=${tokenGoogle}`
+      `https://www.googleapis.com/oauth2/v1/userinfo?alt=json&access_token=${accessToken}`,
+      {
+        timeout: 10000, // 10 segundos timeout
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Accept': 'application/json'
+        }
+      }
     );
-    const datosGoogle = respuesta.data;
-
-    console.log("Usuario autenticado con Google:", datosGoogle);
+    
+    console.log("✅ [BACKEND] Respuesta de Google recibida:", {
+      email: respuesta.data.email,
+      name: respuesta.data.name,
+      id: respuesta.data.id
+    });
 
     // Buscar usuario en tu base de datos por email
     const query = 'SELECT * FROM usuarios WHERE email = $1';
-    const result = await pool.query(query, [datosGoogle.email]);
+    const result = await pool.query(query, [respuesta.data.email]);
     
     if (result.rows.length > 0) {
       // Usuario existe, devolverlo
       const usuario = result.rows[0];
       const { contrasena_hash, ...usuarioSinPassword } = usuario;
       
-      return { 
+      return {  // ← DEVUELVE objeto, NO res.json()
         exito: true, 
         usuario: usuarioSinPassword 
       };
     } else {
       // Crear nuevo usuario si no existe
-      const nombreUsuario = datosGoogle.name.toLowerCase().replace(/\s+/g, '_') + '_' + Math.floor(Math.random() * 10000);
+      const nombreUsuario = respuesta.data.name.toLowerCase().replace(/\s+/g, '_') + '_' + Math.floor(Math.random() * 10000);
       
       const insertQuery = `
         INSERT INTO usuarios (nombre, email, nombre_usuario, rol, foto_perfil) 
@@ -147,21 +168,26 @@ export const loginConGoogle = async (tokenGoogle) => {
       `;
       
       const nuevoUsuario = await pool.query(insertQuery, [
-        datosGoogle.name,
-        datosGoogle.email,
+        respuesta.data.name,
+        respuesta.data.email,
         nombreUsuario,
-        datosGoogle.picture || 'https://res.cloudinary.com/de8qn7bm1/image/upload/v1762320292/Default_pfp.svg_j0obpx.png'
+        respuesta.data.picture || 'https://res.cloudinary.com/de8qn7bm1/image/upload/v1762320292/Default_pfp.svg_j0obpx.png'
       ]);
       
-      return { 
+      return {  // ← DEVUELVE objeto, NO res.json()
         exito: true, 
         usuario: nuevoUsuario.rows[0] 
       };
     }
     
   } catch (error) {
-    console.error('Error en loginConGoogle:', error);
-    return { exito: false, error: 'Error autenticando con Google' };
+    console.error('❌ [BACKEND CONTROLADOR] Error COMPLETO:', {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status,
+      stack: error.stack
+    });
+    return { exito: false, error: 'Error autenticando con Google: ' + error.message };
   }
 };
 
