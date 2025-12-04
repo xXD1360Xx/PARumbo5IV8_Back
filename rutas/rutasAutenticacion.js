@@ -8,8 +8,21 @@ import {
 import { autenticarUsuario } from '../middleware/autenticacionMiddleware.js';
 import sgMail from '@sendgrid/mail';
 
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-console.log('✅ SendGrid configurado con API key');
+// CONFIGURACIÓN SEGURA DE SENDGRID
+const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
+const EMAIL_FROM = process.env.EMAIL_FROM;
+
+console.log('🔍 Variables de SendGrid:');
+console.log('  - SENDGRID_API_KEY:', SENDGRID_API_KEY ? '✅ Presente' : '❌ FALTANTE');
+console.log('  - EMAIL_FROM:', EMAIL_FROM || '❌ FALTANTE');
+
+if (SENDGRID_API_KEY) {
+  sgMail.setApiKey(SENDGRID_API_KEY);
+  console.log('✅ SendGrid configurado correctamente');
+} else {
+  console.error('🚨 CRÍTICO: SENDGRID_API_KEY no está definida');
+  console.error('🚨 Verifica las variables en Northflank');
+}
 
 const router = express.Router();
 
@@ -17,6 +30,29 @@ const router = express.Router();
 router.use((req, res, next) => {
   console.log(`📥 [RUTA] ${req.method} ${req.path} - ${new Date().toISOString()}`);
   next();
+});
+
+// Ruta de diagnóstico - DEBE IR AL PRINCIPIO
+router.get('/debug-env-now', (req, res) => {
+  console.log('🔍 DEBUG ENV - Variables disponibles:');
+  console.log('SENDGRID_API_KEY:', process.env.SENDGRID_API_KEY ? 'SI' : 'NO');
+  console.log('EMAIL_FROM:', process.env.EMAIL_FROM || 'NO');
+  console.log('NODE_ENV:', process.env.NODE_ENV);
+  console.log('ENTORNO:', process.env.ENTORNO);
+  
+  res.json({
+    success: true,
+    sendgrid_key_exists: !!process.env.SENDGRID_API_KEY,
+    email_from_exists: !!process.env.EMAIL_FROM,
+    sendgrid_key: process.env.SENDGRID_API_KEY ? '***' + process.env.SENDGRID_API_KEY.slice(-10) : null,
+    email_from: process.env.EMAIL_FROM,
+    all_env_keys: Object.keys(process.env).filter(key => 
+      key.includes('SENDGRID') || 
+      key.includes('EMAIL') || 
+      key.includes('NODE') ||
+      key.includes('ENTORNO')
+    )
+  });
 });
 
 // POST /autenticacion/login - Login manual

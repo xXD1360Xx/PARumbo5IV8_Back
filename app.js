@@ -1,9 +1,10 @@
+import dotenv from 'dotenv';
+dotenv.config(); 
+
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import { verificarConexionDB } from './configuracion/basedeDatos.js';
-
-dotenv.config();
+import rutasAutenticacion from './rutas/rutasAutenticacion.js';
 
 const app = express();
 const PORT = process.env.PORT || 10000;
