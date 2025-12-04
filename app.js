@@ -4,7 +4,6 @@ dotenv.config();
 import express from 'express';
 import cors from 'cors';
 import { verificarConexionDB } from './configuracion/basedeDatos.js';
-import rutasAutenticacion from './rutas/rutasAutenticacion.js';
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -85,11 +84,17 @@ app.use(['/api/auth', '/api/usuarios'], async (req, res, next) => {
   }
 });
 
+// app.js - Agrega esto:
+console.log('🔄 Montando rutas de autenticación...');
+console.log('📁 Ruta base:', '/api/auth');
+
 // Importar rutas
 import rutasAutenticacion from './rutas/rutasAutenticacion.js';
+console.log('✅ Rutas importadas correctamente');
 
 // Usar rutas
 app.use('/api/auth', rutasAutenticacion);
+console.log('✅ Rutas montadas en /api/auth');
 
 // Ruta de prueba simple sin DB
 app.get('/api/test', (req, res) => {

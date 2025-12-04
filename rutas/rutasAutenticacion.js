@@ -26,6 +26,15 @@ if (SENDGRID_API_KEY) {
 
 const router = express.Router();
 
+router.get('/test-simple', (req, res) => {
+  console.log('✅ Ruta /test-simple accedida');
+  res.json({ 
+    success: true, 
+    message: '¡Funciona!',
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Middleware de logging para todas las rutas
 router.use((req, res, next) => {
   console.log(`📥 [RUTA] ${req.method} ${req.path} - ${new Date().toISOString()}`);
