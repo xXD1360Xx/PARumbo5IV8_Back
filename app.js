@@ -64,26 +64,6 @@ app.get('/health', async (req, res) => {
   res.status(dbStatus.connected ? 200 : 503).json(healthStatus);
 });
 
-// Middleware para verificar DB en rutas críticas
-app.use(['/api/auth', '/api/usuarios'], async (req, res, next) => {
-  try {
-    const dbStatus = await verificarConexionDB(1);
-    if (!dbStatus.connected) {
-      return res.status(503).json({
-        exito: false,
-        error: 'Base de datos no disponible',
-        mensaje: 'Por favor, intente nuevamente en unos momentos'
-      });
-    }
-    next();
-  } catch (error) {
-    return res.status(500).json({
-      exito: false,
-      error: 'Error verificando base de datos'
-    });
-  }
-});
-
 // app.js - Agrega esto:
 console.log('🔄 Montando rutas de autenticación...');
 console.log('📁 Ruta base:', '/api/auth');
