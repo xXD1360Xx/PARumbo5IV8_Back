@@ -5,35 +5,37 @@ const { Pool } = pkg;
 // Extraer configuración de DATABASE_URL
 const DATABASE_URL = process.env.DATABASE_URL;
 
-// Parsear la URL de conexión
+// Parsear la URL de conexión 
 const parseDatabaseUrl = (url) => {
   try {
     const parsed = new URL(url);
-    const host = parsed.hostname;
-    const user = parsed.username;
-    const pass = parsed.password;
-    const db = parsed.pathname?.substring(1);
     
-    console.log('🔍 Componentes parseados:');
-    console.log('   Host:', host + '.oregon-postgres.render.com');
-    console.log('   Usuario:', user ? '✅ ' + user : '❌ No especificado');
-    console.log('   Password:', pass ? '✅ ' + pass.substring(0, 3) + '...' : '❌ No especificada');
-    console.log('   Database:', db ? '✅ ' + db : '❌ No especificada');
+    // Extraer hostname completo (sin puerto)
+    let host = parsed.hostname;
+    // Asegurar el subdominio correcto para Render.com
+    host = `${host}.oregon-postgres.render.com`;
     
-    // 2. Retornar configuración
     return {
-      host: host + '.oregon-postgres.render.com',
-      port: 5432,  // PostgreSQL default
-      database: db,
-      user: user,
-      password: pass
+      host: host,
+      port: 5432,
+      database: parsed.pathname?.substring(1),
+      user: parsed.username,
+      password: parsed.password
     };
+    
   } catch (error) {
-    console.warn('⚠️ No se pudo parsear DATABASE_URL');
+    console.error('❌ Error parseando DATABASE_URL:', error.message);
+    return null;
   }
 };
 
-const dbConfig = parseDatabaseUrl(DATABASE_URL);
+if (!parsed) {
+  console.error('❌ ERROR CRÍTICO: No se pudo obtener configuración de DB');
+  process.exit(1); // Detener la aplicación
+}
+
+console.log('✅ Configuración obtenida de DATABASE_URL');
+const dbConfig = parsed;
 
 // ========== CONFIGURACIÓN DEL POOL ==========
 const poolConfig = {
@@ -67,8 +69,8 @@ pool.on('error', (err) => {
 // ========== FUNCIONES DE CONEXIÓN Y VERIFICACIÓN ==========
 
 /**
- * Verifica la conexión a PostgreSQL
- * @returns {Promise<Object>} Resultado de la verificación
+ * Verificación BÁSICA de conexión (sin chequeo de tablas específicas)
+ * @returns {Promise<Object>} Resultado de la verificación básica
  */
 export const verificarConexionDB = async () => {
   let client;
@@ -76,38 +78,22 @@ export const verificarConexionDB = async () => {
   try {
     client = await pool.connect();
     
-    // Verificación básica
+    // Verificación básica únicamente
     const result = await client.query(`
       SELECT 
         NOW() as server_time,
         version() as pg_version,
         current_database() as db_name,
-        current_user as db_user
+        current_user as db_user,
+        inet_server_addr() as server_ip
     `);
-    
-    // Verificar las 3 tablas principales
-    const tablas = await client.query(`
-      SELECT 
-        EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '_users') as users_exists,
-        EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'user_vocational_results') as vocational_exists,
-        EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '_user_test_results') as tests_exists,
-        (SELECT COUNT(*) FROM pg_tables WHERE schemaname = 'public') as total_tables
-    `);
-    
-    const tablaInfo = {
-      _users: tablas.rows[0].users_exists ? '✅ EXISTE' : '❌ NO EXISTE',
-      user_vocational_results: tablas.rows[0].results_exists ? '✅ EXISTE' : '❌ NO EXISTE',
-      _user_test_results: tablas.rows[0].results_exists ? '✅ EXISTE' : '❌ NO EXISTE',
-      total_tables: tablas.rows[0].total_tables
-    };
     
     console.log('🎉 Conexión PostgreSQL exitosa');
     console.log(`   Database: ${result.rows[0].db_name}`);
     console.log(`   User: ${result.rows[0].db_user}`);
-    console.log(`   Tabla '_users': ${tablaInfo._users}`);
-    console.log(`   Tabla 'user_vocational_results': ${tablaInfo.user_vocational_results}`);
-    console.log(`   Tabla '_user_test_results': ${tablaInfo._user_test_results}`);
-    console.log(`   Total tablas en public: ${tablaInfo.total_tables}`);
+    console.log(`   Server IP: ${result.rows[0].server_ip}`);
+    console.log(`   PostgreSQL: ${result.rows[0].pg_version.split(',')[0]}`);
+    console.log(`   Hora servidor: ${result.rows[0].server_time}`);
     
     return {
       success: true,
@@ -116,27 +102,17 @@ export const verificarConexionDB = async () => {
       user: result.rows[0].db_user,
       server_time: result.rows[0].server_time,
       version: result.rows[0].pg_version,
-      tables: tablaInfo
+      server_ip: result.rows[0].server_ip
     };
     
   } catch (error) {
     console.error('❌ Error conectando a PostgreSQL:', error.message);
     
-    // Análisis rápido del error
-    const errorAnalysis = {
-      dns: error.message.includes('ENOTFOUND') || error.message.includes('getaddrinfo'),
-      auth: error.message.includes('password') || error.code === '28P01',
-      ssl: error.message.includes('SSL'),
-      timeout: error.message.includes('timeout') || error.code === 'ETIMEDOUT',
-      db_not_found: error.message.includes('does not exist') || error.message.includes('database')
-    };
-    
     return {
       success: false,
       connected: false,
       error: error.message,
-      code: error.code,
-      analysis: errorAnalysis
+      code: error.code
     };
   } finally {
     if (client) {
@@ -146,64 +122,156 @@ export const verificarConexionDB = async () => {
 };
 
 /**
- * Obtiene información detallada de las tablas
- * @returns {Promise<Object>} Información de tablas y columnas
+ * Obtiene información DETALLADA de todas las tablas y columnas
+ * @returns {Promise<Object>} Información completa de estructura
  */
-export const obtenerEstructuraTablas = async () => {
+export const obtenerEstructuraCompletaDB = async () => {
   let client;
   
   try {
     client = await pool.connect();
     
-    // Obtener todas las tablas
+    // 1. Obtener TODAS las tablas con información básica
     const tablas = await client.query(`
       SELECT 
         table_name,
-        table_type
-      FROM information_schema.tables 
+        table_type,
+        (SELECT COUNT(*) 
+         FROM information_schema.columns c 
+         WHERE c.table_schema = t.table_schema 
+           AND c.table_name = t.table_name) as column_count
+      FROM information_schema.tables t
       WHERE table_schema = 'public'
       ORDER BY table_name
     `);
     
-    // Para cada tabla, obtener sus columnas
-    const tablasConColumnas = await Promise.all(
+    console.log(`📊 Se encontraron ${tablas.rows.length} tablas en la base de datos`);
+    
+    // 2. Para cada tabla, obtener sus columnas DETALLADAS
+    const tablasConDetalles = await Promise.all(
       tablas.rows.map(async (tabla) => {
         const columnas = await client.query(`
           SELECT 
             column_name,
             data_type,
+            character_maximum_length,
             is_nullable,
-            column_default
+            column_default,
+            ordinal_position
           FROM information_schema.columns
           WHERE table_schema = 'public'
             AND table_name = $1
           ORDER BY ordinal_position
         `, [tabla.table_name]);
         
+        // Formatear columnas para mejor visualización
+        const columnasFormateadas = columnas.rows.map(col => ({
+          nombre: col.column_name,
+          tipo: col.data_type + (col.character_maximum_length ? `(${col.character_maximum_length})` : ''),
+          nulo: col.is_nullable === 'YES' ? '✅ SÍ' : '❌ NO',
+          valor_default: col.column_default || 'Ninguno',
+          posicion: col.ordinal_position
+        }));
+        
         return {
           nombre: tabla.table_name,
           tipo: tabla.table_type,
-          columnas: columnas.rows
+          total_columnas: tabla.column_count,
+          columnas: columnasFormateadas
         };
       })
     );
     
-    // Buscar específicamente tus 3 tablas
+    // 3. Identificar las tablas principales (tus 3 tablas clave)
     const misTablas = {
-      _users: tablasConColumnas.find(t => t.nombre === '_users'),
-      user_vocational_results: tablasConColumnas.find(t => t.nombre === 'user_vocational_results'),
-      _user_test_results: tablasConColumnas.find(t => t.nombre === '_user_test_results')
+      usuarios: tablasConDetalles.find(t => t.nombre === '_users'),
+      resultados_vocacionales: tablasConDetalles.find(t => t.nombre === 'user_vocational_results'),
+      resultados_tests: tablasConDetalles.find(t => t.nombre === '_user_test_results')
+    };
+    
+    // 4. Mostrar información DETALLADA de las tablas principales
+    console.log('\n🔍 ===== TABLAS PRINCIPALES =====');
+    
+    if (misTablas.usuarios) {
+      console.log(`\n📋 Tabla: '_users' (${misTablas.usuarios.total_columnas} columnas)`);
+      console.log('   Columnas:');
+      misTablas.usuarios.columnas.forEach(col => {
+        console.log(`     ${col.posicion}. ${col.nombre} (${col.tipo}) - Nulo: ${col.nulo}`);
+      });
+    } else {
+      console.log('❌ Tabla \'_users\' NO encontrada');
+    }
+    
+    if (misTablas.resultados_vocacionales) {
+      console.log(`\n📋 Tabla: 'user_vocational_results' (${misTablas.resultados_vocacionales.total_columnas} columnas)`);
+      console.log('   Columnas:');
+      misTablas.resultados_vocacionales.columnas.forEach(col => {
+        console.log(`     ${col.posicion}. ${col.nombre} (${col.tipo}) - Nulo: ${col.nulo}`);
+      });
+    } else {
+      console.log('❌ Tabla \'user_vocational_results\' NO encontrada');
+    }
+    
+    if (misTablas.resultados_tests) {
+      console.log(`\n📋 Tabla: '_user_test_results' (${misTablas.resultados_tests.total_columnas} columnas)`);
+      console.log('   Columnas:');
+      misTablas.resultados_tests.columnas.forEach(col => {
+        console.log(`     ${col.posicion}. ${col.nombre} (${col.tipo}) - Nulo: ${col.nulo}`);
+      });
+    } else {
+      console.log('❌ Tabla \'_user_test_results\' NO encontrada');
+    }
+    
+    // 5. Mostrar otras tablas disponibles
+    const otrasTablas = tablasConDetalles.filter(t => 
+      !['_users', 'user_vocational_results', '_user_test_results'].includes(t.nombre)
+    );
+    
+    if (otrasTablas.length > 0) {
+      console.log('\n📋 ===== OTRAS TABLAS DISPONIBLES =====');
+      otrasTablas.forEach(tabla => {
+        console.log(`   • ${tabla.nombre} (${tabla.tipo}, ${tabla.total_columnas} columnas)`);
+      });
+    }
+    
+    // 6. Generar resumen para uso en API
+    const resumenTablas = {
+      total_tablas: tablas.rows.length,
+      tablas_principales: {
+        _users: misTablas.usuarios ? {
+          existe: true,
+          columnas: misTablas.usuarios.columnas.map(c => c.nombre),
+          total_columnas: misTablas.usuarios.total_columnas
+        } : { existe: false },
+        
+        user_vocational_results: misTablas.resultados_vocacionales ? {
+          existe: true,
+          columnas: misTablas.resultados_vocacionales.columnas.map(c => c.nombre),
+          total_columnas: misTablas.resultados_vocacionales.total_columnas
+        } : { existe: false },
+        
+        _user_test_results: misTablas.resultados_tests ? {
+          existe: true,
+          columnas: misTablas.resultados_tests.columnas.map(c => c.nombre),
+          total_columnas: misTablas.resultados_tests.total_columnas
+        } : { existe: false }
+      },
+      otras_tablas: otrasTablas.map(t => ({
+        nombre: t.nombre,
+        tipo: t.tipo,
+        total_columnas: t.total_columnas
+      }))
     };
     
     return {
       success: true,
-      total_tablas: tablas.rows.length,
-      todas_tablas: tablasConColumnas,
+      estructura_completa: tablasConDetalles,
+      resumen: resumenTablas,
       mis_tablas: misTablas
     };
     
   } catch (error) {
-    console.error('❌ Error obteniendo estructura:', error.message);
+    console.error('❌ Error obteniendo estructura de base de datos:', error.message);
     return {
       success: false,
       error: error.message
@@ -214,7 +282,6 @@ export const obtenerEstructuraTablas = async () => {
     }
   }
 };
-
 
 /**
  * Función de prueba rápida de conexión
@@ -241,12 +308,14 @@ export const testConexionSimple = async () => {
 };
 
 /**
- * Inicializa la base de datos (verifica conexión y tablas)
- * @returns {Promise<Object>} Estado de inicialización
+ * Inicializa la base de datos con verificación COMPLETA
+ * @returns {Promise<Object>} Estado de inicialización detallado
  */
 export const inicializarDB = async () => {
-  console.log('🔧 Inicializando conexión a PostgreSQL...');
+  console.log('\n🔧 ===== INICIALIZANDO BASE DE DATOS =====');
   
+  // 1. Verificar conexión básica
+  console.log('🔗 Verificando conexión básica...');
   const conexion = await verificarConexionDB();
   
   if (!conexion.success) {
@@ -254,58 +323,64 @@ export const inicializarDB = async () => {
     return {
       initialized: false,
       connection: conexion,
-      tables: null
+      estructura: null
     };
   }
   
-  console.log('✅ Conexión a PostgreSQL establecida');
+  console.log('✅ Conexión básica establecida');
   
-  // Verificar estructura de tablas
-  const estructura = await obtenerEstructuraTablas();
+  // 2. Obtener estructura COMPLETA de la base de datos
+  console.log('🔍 Obteniendo estructura completa...');
+  const estructura = await obtenerEstructuraCompletaDB();
   
   if (!estructura.success) {
-    console.warn('⚠️ No se pudo obtener estructura de tablas');
-  } else {
-    console.log(`📊 Se encontraron ${estructura.total_tablas} tablas en la base de datos`);
-    
-    // Verificar si existen tus tablas principales
-    if (estructura.mis_tablas._users) {
-      console.log(`   ✅ Tabla '_users' encontrada (${estructura.mis_tablas._users.columnas.length} columnas)`);
-    } else {
-      console.log('   ⚠️ Tabla \'_users\' no encontrada');
-    }
-    
-    if (estructura.mis_tablas.user_vocational_results) {
-      console.log(`   ✅ Tabla 'user_vocational_results' encontrada (${estructura.mis_tablas.user_vocational_results.columnas.length} columnas)`);
-    } else {
-      console.log('   ⚠️ Tabla \'user_vocational_results\' no encontrada');
-    }
-
-    if (estructura.mis_tablas._user_test_results) {
-      console.log(`   ✅ Tabla '_user_test_results' encontrada (${estructura.mis_tablas._user_test_results.columnas.length} columnas)`);
-    } else {
-      console.log('   ⚠️ Tabla \'_user_test_results\' no encontrada');
-    }
+    console.error('⚠️ No se pudo obtener estructura completa');
+    return {
+      initialized: true, // Conexión sí, estructura no
+      connection: conexion,
+      estructura: null,
+      warning: 'Conexión exitosa pero no se pudo analizar estructura'
+    };
   }
+  
+  console.log('✅ Estructura obtenida exitosamente');
+  
+  // 3. Generar resumen para logs de inicio
+  console.log('\n📋 ===== RESUMEN INICIAL =====');
+  console.log(`   ✅ PostgreSQL conectado: ${conexion.database}`);
+  console.log(`   ✅ Total tablas: ${estructura.resumen.total_tablas}`);
+  
+  const tablasPrincipales = estructura.resumen.tablas_principales;
+  console.log(`   ✅ Tabla '_users': ${tablasPrincipales._users.existe ? 'ENCONTRADA' : 'NO ENCONTRADA'}`);
+  console.log(`   ✅ Tabla 'user_vocational_results': ${tablasPrincipales.user_vocational_results.existe ? 'ENCONTRADA' : 'NO ENCONTRADA'}`);
+  console.log(`   ✅ Tabla '_user_test_results': ${tablasPrincipales._user_test_results.existe ? 'ENCONTRADA' : 'NO ENCONTRADA'}`);
   
   return {
     initialized: true,
     connection: conexion,
-    tables: estructura.success ? estructura : null
+    estructura: estructura,
+    resumen: {
+      database: conexion.database,
+      total_tablas: estructura.resumen.total_tablas,
+      tablas_principales: estructura.resumen.tablas_principales
+    }
   };
 };
 
 // ========== EXPORTAR ==========
 export { pool };
 
-// Inicialización automática
+// Inicialización automática al cargar el módulo
 inicializarDB().then(estado => {
   if (estado.initialized) {
-    console.log('🚀 PostgreSQL listo');
+    console.log('\n🚀 PostgreSQL inicializado correctamente');
+    console.log('========================================');
   } else {
-    console.error('❌ PostgreSQL no se pudo conectar');
+    console.error('\n❌ Falló la inicialización de PostgreSQL');
   }
+}).catch(error => {
+  console.error('\n❌ Error en inicialización:', error.message);
 });
 
 console.log('✅ Módulo PostgreSQL cargado');
-console.log('📤 Exportados: pool, verificarConexionDB, obtenerEstructuraTablas, testConexionSimple, inicializarDB');
+console.log('📤 Exportados: pool, verificarConexionDB, obtenerEstructuraCompletaDB, testConexionSimple, inicializarDB');
