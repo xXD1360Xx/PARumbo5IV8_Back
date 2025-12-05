@@ -8,25 +8,54 @@ import {
 import { autenticarUsuario } from '../middleware/autenticacionMiddleware.js';
 import sgMail from '@sendgrid/mail';
 
-// CONFIGURACIÓN SEGURA DE SENDGRID
-const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
-const EMAIL_FROMM = process.env.EMAIL_FROMM;
+// AL PRINCIPIO de rutasAutenticacion.js, DESPUÉS de los imports:
 
-console.log('🔍 Variables de SendGrid:');
-console.log('  - SENDGRID_API_KEY:', SENDGRID_API_KEY 
-  ? `✅ Presente (${SENDGRID_API_KEY.substring(0, 10)}...)` 
-  : '❌ FALTANTE');
-console.log('  - EMAIL_FROMM:', EMAIL_FROMM
-  ? `✅ Presente: ${EMAIL_FROMM}` 
-  : '❌ FALTANTE');
+console.log('🔍 ====== INICIO DEBUG ======');
+console.log('🔍 Verificando TODAS las variables de entorno:');
 
-if (SENDGRID_API_KEY) {
-  sgMail.setApiKey(SENDGRID_API_KEY);
-  console.log('✅ SendGrid configurado correctamente');
-} else {
-  console.error('🚨 CRÍTICO: SENDGRID_API_KEY no está definida');
-  console.error('🚨 Verifica las variables en Northflank');
+// 1. Lista TODAS las variables disponibles
+const todasLasVariables = Object.keys(process.env);
+console.log(`🔍 Total de variables: ${todasLasVariables.length}`);
+
+// 2. Busca específicamente EMAIL_FROM
+console.log('🔍 Buscando EMAIL_FROM...');
+let emailFromEncontrado = false;
+
+todasLasVariables.forEach(key => {
+  if (key === 'EMAIL_FROM') {
+    emailFromEncontrado = true;
+    console.log(`✅ EMAIL_FROM ENCONTRADO: "${process.env[key]}"`);
+  }
+  
+  // También muestra cualquier variable que contenga "EMAIL" o "FROM"
+  if (key.includes('EMAIL') || key.includes('FROM')) {
+    const valor = process.env[key];
+    const maskedVal = key.includes('KEY') || key.includes('SECRET') 
+      ? `***${valor.substring(valor.length - 4)}` 
+      : valor;
+    console.log(`   ${key}: ${maskedVal}`);
+  }
+});
+
+if (!emailFromEncontrado) {
+  console.error('❌ EMAIL_FROM NO ENCONTRADO en process.env');
+  console.error('❌ Variables que SÍ existen:');
+  todasLasVariables.forEach(key => {
+    console.log(`   - ${key}`);
+  });
 }
+
+// 3. Configuración de SendGrid
+console.log('🔍 Configurando SendGrid...');
+if (process.env.SENDGRID_API_KEY) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+  console.log('✅ SendGrid API Key configurada');
+  console.log(`   Key (primeros 10 chars): ${process.env.SENDGRID_API_KEY.substring(0, 10)}...`);
+} else {
+  console.error('🚨 ERROR: SENDGRID_API_KEY no encontrada');
+}
+
+console.log('🔍 ====== FIN DEBUG ======');
 
 const router = express.Router();
 
@@ -49,16 +78,16 @@ router.use((req, res, next) => {
 router.get('/debug-env-now', (req, res) => {
   console.log('🔍 DEBUG ENV - Variables disponibles:');
   console.log('SENDGRID_API_KEY:', process.env.SENDGRID_API_KEY ? 'SI' : 'NO');
-  console.log('EMAIL_FROMM:', process.env.EMAIL_FROMM || 'NO');
+  console.log('EMAIL_FROM:', process.env.EMAIL_FROM || 'NO');
   console.log('NODE_ENV:', process.env.NODE_ENV);
   console.log('ENTORNO:', process.env.ENTORNO);
   
   res.json({
     success: true,
     sendgrid_key_exists: !!process.env.SENDGRID_API_KEY,
-    email_from_exists: !!process.env.EMAIL_FROMM,
+    email_from_exists: !!process.env.EMAIL_FROM,
     sendgrid_key: process.env.SENDGRID_API_KEY ? '***' + process.env.SENDGRID_API_KEY.slice(-10) : null,
-    email_from: process.env.EMAIL_FROMM,
+    email_from: process.env.EMAIL_FROM,
     all_env_keys: Object.keys(process.env).filter(key => 
       key.includes('SENDGRID') || 
       key.includes('EMAIL') || 
@@ -344,7 +373,7 @@ router.get('/config-email', (req, res) => {
   res.json({
     sendgrid_key_exists: !!process.env.SENDGRID_API_KEY,
     sendgrid_key_prefix: process.env.SENDGRID_API_KEY ? process.env.SENDGRID_API_KEY.substring(0, 5) : 'no-key',
-    email_from: process.env.EMAIL_FROMM,
+    email_from: process.env.EMAIL_FROM,
     timestamp: new Date().toISOString()
   });
 });
@@ -389,7 +418,7 @@ router.post('/enviarCorreo', async (req, res) => {
     // Configurar el email - ¡USA LA VARIABLE EMAIL_FROM de Northflank!
     const msg = {
       to: correo,
-      from: process.env.EMAIL_FROMM,  // ← Esto viene de Northflank
+      from: process.env.EMAIL_FROM,  // ← Esto viene de Northflank
       subject: asunto,
       text: `Tu código de verificación es: ${codigo}`,
       html: `
