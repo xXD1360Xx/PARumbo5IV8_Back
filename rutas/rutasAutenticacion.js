@@ -13,8 +13,12 @@ const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
 const EMAIL_FROM = process.env.EMAIL_FROM;
 
 console.log('🔍 Variables de SendGrid:');
-console.log('  - SENDGRID_API_KEY:', SENDGRID_API_KEY ? '✅ Presente' : '❌ FALTANTE');
-console.log('  - EMAIL_FROM:', EMAIL_FROM || '❌ FALTANTE');
+console.log('  - SENDGRID_API_KEY:', SENDGRID_API_KEY 
+  ? `✅ Presente (${SENDGRID_API_KEY.substring(0, 10)}...)` 
+  : '❌ FALTANTE');
+console.log('  - EMAIL_FROM:', EMAIL_FROM 
+  ? `✅ Presente: ${EMAIL_FROM}` 
+  : '❌ FALTANTE');
 
 if (SENDGRID_API_KEY) {
   sgMail.setApiKey(SENDGRID_API_KEY);
