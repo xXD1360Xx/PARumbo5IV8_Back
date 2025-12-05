@@ -9,7 +9,7 @@ const DATABASE_URL = process.env.DATABASE_URL;
 const parseDatabaseUrl = (url) => {
   try {
     const parsed = new URL(url);
-    const host = parsed.hostname;
+    const host = parsed.host;
     const user = parsed.username;
     const pass = parsed.password;
     const db = parsed.pathname?.substring(1);
