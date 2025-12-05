@@ -9,20 +9,20 @@ const DATABASE_URL = process.env.DATABASE_URL;
 const parseDatabaseUrl = (url) => {
   try {
     const parsed = new URL(url);
-    const host = parsed.host;
+    const host = parsed.hostname;
     const user = parsed.username;
     const pass = parsed.password;
     const db = parsed.pathname?.substring(1);
     
     console.log('🔍 Componentes parseados:');
-    console.log('   Host:', host);
+    console.log('   Host:', host + '.oregon-postgres.render.com');
     console.log('   Usuario:', user ? '✅ ' + user : '❌ No especificado');
     console.log('   Password:', pass ? '✅ ' + pass.substring(0, 3) + '...' : '❌ No especificada');
     console.log('   Database:', db ? '✅ ' + db : '❌ No especificada');
     
     // 2. Retornar configuración
     return {
-      host: host,
+      host: host + '.oregon-postgres.render.com',
       port: 5432,  // PostgreSQL default
       database: db,
       user: user,
