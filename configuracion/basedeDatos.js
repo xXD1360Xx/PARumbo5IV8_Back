@@ -88,25 +88,25 @@ export const verificarConexionDB = async () => {
     // Verificar las 3 tablas principales
     const tablas = await client.query(`
       SELECT 
-        EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'users') as users_exists,
+        EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '_users') as users_exists,
         EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'user_vocational_results') as vocational_exists,
-        EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'user_test_results') as tests_exists,
+        EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '_user_test_results') as tests_exists,
         (SELECT COUNT(*) FROM pg_tables WHERE schemaname = 'public') as total_tables
     `);
     
     const tablaInfo = {
-      users: tablas.rows[0].users_exists ? '✅ EXISTE' : '❌ NO EXISTE',
+      _users: tablas.rows[0].users_exists ? '✅ EXISTE' : '❌ NO EXISTE',
       user_vocational_results: tablas.rows[0].results_exists ? '✅ EXISTE' : '❌ NO EXISTE',
-      user_test_results: tablas.rows[0].results_exists ? '✅ EXISTE' : '❌ NO EXISTE',
+      _user_test_results: tablas.rows[0].results_exists ? '✅ EXISTE' : '❌ NO EXISTE',
       total_tables: tablas.rows[0].total_tables
     };
     
     console.log('🎉 Conexión PostgreSQL exitosa');
     console.log(`   Database: ${result.rows[0].db_name}`);
     console.log(`   User: ${result.rows[0].db_user}`);
-    console.log(`   Tabla 'users': ${tablaInfo.users}`);
+    console.log(`   Tabla '_users': ${tablaInfo._users}`);
     console.log(`   Tabla 'user_vocational_results': ${tablaInfo.user_vocational_results}`);
-    console.log(`   Tabla 'user_test_results': ${tablaInfo.user_test_results}`);
+    console.log(`   Tabla '_user_test_results': ${tablaInfo._user_test_results}`);
     console.log(`   Total tablas en public: ${tablaInfo.total_tables}`);
     
     return {
@@ -190,9 +190,9 @@ export const obtenerEstructuraTablas = async () => {
     
     // Buscar específicamente tus 3 tablas
     const misTablas = {
-      users: tablasConColumnas.find(t => t.nombre === 'users'),
+      _users: tablasConColumnas.find(t => t.nombre === '_users'),
       user_vocational_results: tablasConColumnas.find(t => t.nombre === 'user_vocational_results'),
-      user_test_results: tablasConColumnas.find(t => t.nombre === 'user_test_results')
+      _user_test_results: tablasConColumnas.find(t => t.nombre === '_user_test_results')
     };
     
     return {
@@ -269,10 +269,10 @@ export const inicializarDB = async () => {
     console.log(`📊 Se encontraron ${estructura.total_tablas} tablas en la base de datos`);
     
     // Verificar si existen tus tablas principales
-    if (estructura.mis_tablas.users) {
-      console.log(`   ✅ Tabla 'users' encontrada (${estructura.mis_tablas.users.columnas.length} columnas)`);
+    if (estructura.mis_tablas._users) {
+      console.log(`   ✅ Tabla '_users' encontrada (${estructura.mis_tablas._users.columnas.length} columnas)`);
     } else {
-      console.log('   ⚠️ Tabla \'users\' no encontrada');
+      console.log('   ⚠️ Tabla \'_users\' no encontrada');
     }
     
     if (estructura.mis_tablas.user_vocational_results) {
@@ -281,10 +281,10 @@ export const inicializarDB = async () => {
       console.log('   ⚠️ Tabla \'user_vocational_results\' no encontrada');
     }
 
-    if (estructura.mis_tablas.user_test_results) {
-      console.log(`   ✅ Tabla 'user_test_results' encontrada (${estructura.mis_tablas.user_test_results.columnas.length} columnas)`);
+    if (estructura.mis_tablas._user_test_results) {
+      console.log(`   ✅ Tabla '_user_test_results' encontrada (${estructura.mis_tablas._user_test_results.columnas.length} columnas)`);
     } else {
-      console.log('   ⚠️ Tabla \'user_test_results\' no encontrada');
+      console.log('   ⚠️ Tabla \'_user_test_results\' no encontrada');
     }
   }
   
