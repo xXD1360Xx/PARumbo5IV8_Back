@@ -4,31 +4,14 @@ dotenv.config();
 import express from 'express';
 import cors from 'cors';
 import { verificarConexionDB } from './configuracion/basedeDatos.js';
+import rutasAutenticacion from './rutas/rutasAutenticacion.js'; // ← IMPORTAR AL INICIO
 
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// Middleware CORS mejorado
+// === 1. MIDDLEWARE BÁSICOS PRIMERO ===
 app.use(cors({
-  origin: function(origin, callback) {
-    // Permitir todos en desarrollo, específicos en producción
-    if (!origin && process.env.ENTORNO === 'desarrollo') {
-      return callback(null, true);
-    }
-    
-    const allowedOrigins = [
-      'http://localhost:8081',
-      'http://localhost:19006',
-      'exp://192.168.*:*',  // Para Expo
-      'https://tu-frontend-en-render.com',  // Tu frontend en producción
-    ];
-    
-    if (!origin || allowedOrigins.some(allowed => origin.match(allowed))) {
-      callback(null, true);
-    } else {
-      callback(new Error('Origen no permitido por CORS'));
-    }
-  },
+  origin: '*', // ← TEMPORALMENTE PERMITIR TODO para debugging
   credentials: true,
   optionsSuccessStatus: 200
 }));
@@ -36,15 +19,31 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Middleware de logging
+// === 2. LOGGING MEJORADO ===
 app.use((req, res, next) => {
-  console.log(`📥 ${new Date().toISOString()} ${req.method} ${req.path}`);
-  next();
+  console.log(`📥 [${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
+  console.log(`   Headers:`, req.headers['content-type']);
+  next(); // ← ¡IMPORTANTE: llamar next()!
 });
 
-// Health check mejorado
+// === 3. RUTA TEST SIMPLE AL PRINCIPIO ===
+app.get('/api/test', (req, res) => {
+  console.log('✅ Ruta /api/test accedida');
+  res.json({ 
+    mensaje: 'API funcionando',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// === 4. RUTAS DE AUTENTICACIÓN ===
+console.log('🔄 Montando rutas de autenticación en /api/auth...');
+app.use('/api/auth', rutasAutenticacion);
+console.log('✅ Rutas montadas');
+
+// === 5. HEALTH CHECK ===
 app.get('/health', async (req, res) => {
-  const dbStatus = await verificarConexionDB(1); // Solo 1 intento rápido
+  console.log('🩺 Health check accedido');
+  const dbStatus = await verificarConexionDB(1);
   
   const healthStatus = {
     status: dbStatus.connected ? "healthy" : "unhealthy",
@@ -64,46 +63,29 @@ app.get('/health', async (req, res) => {
   res.status(dbStatus.connected ? 200 : 503).json(healthStatus);
 });
 
-// app.js - Agrega esto:
-console.log('🔄 Montando rutas de autenticación...');
-console.log('📁 Ruta base:', '/api/auth');
-
-// Importar rutas
-import rutasAutenticacion from './rutas/rutasAutenticacion.js';
-console.log('✅ Rutas importadas correctamente');
-
-// Usar rutas
-app.use('/api/auth', rutasAutenticacion);
-console.log('✅ Rutas montadas en /api/auth');
-
-app.get('/debug-middleware', (req, res) => {
-  console.log('🔍 Middleware debug - Ruta accedida:', req.path);
+// === 6. RUTA DEBUG ===
+app.get('/debug', (req, res) => {
+  console.log('🔍 Debug route accedida');
   res.json({
-    message: 'Middleware funciona',
-    path: req.path,
-    method: req.method,
+    message: 'Debug funcionando',
+    routes: ['/health', '/api/test', '/api/auth/*'],
     timestamp: new Date().toISOString()
   });
 });
 
-
-// Ruta de prueba simple sin DB
-app.get('/api/test', (req, res) => {
-  res.json({ 
-    mensaje: 'API funcionando',
-    timestamp: new Date().toISOString()
-  });
-});
-
-// Manejo de errores 404
+// === 7. MIDDLEWARE 404 (AL FINAL) ===
 app.use('*', (req, res) => {
+  console.log(`❌ Ruta no encontrada: ${req.method} ${req.originalUrl}`);
   res.status(404).json({
     exito: false,
-    error: 'Ruta no encontrada'
+    error: 'Ruta no encontrada',
+    path: req.originalUrl,
+    method: req.method,
+    available_routes: ['/health', '/api/test', '/debug', '/api/auth/*']
   });
 });
 
-// Middleware de errores global
+// === 8. ERROR HANDLER ===
 app.use((err, req, res, next) => {
   console.error('🔥 Error global:', err);
   res.status(500).json({
@@ -113,19 +95,22 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Iniciar servidor solo si DB está disponible
+// === 9. INICIAR SERVIDOR ===
 const iniciarServidor = async () => {
   try {
     const dbStatus = await verificarConexionDB(3);
     
-    if (!dbStatus.connected) {
-      console.error('🚨 NO se pudo conectar a PostgreSQL. Servidor iniciará pero auth fallará.');
-    }
-    
-    app.listen(PORT, () => {
-      console.log(`🚀 Servidor ejecutándose en puerto ${PORT}`);
+    app.listen(PORT, '0.0.0.0', () => {  // ← Agrega '0.0.0.0'
+      console.log(`🚀 Servidor ejecutándose en http://0.0.0.0:${PORT}`);
       console.log(`🌍 Entorno: ${process.env.ENTORNO || 'desarrollo'}`);
       console.log(`📊 Estado DB: ${dbStatus.connected ? '✅ Conectado' : '❌ Desconectado'}`);
+      console.log(`📡 Rutas disponibles:`);
+      console.log(`   - GET  /health`);
+      console.log(`   - GET  /api/test`);
+      console.log(`   - GET  /debug`);
+      console.log(`   - POST /api/auth/enviarCorreo`);
+      console.log(`   - POST /api/auth/login`);
+      console.log(`   - POST /api/auth/registro`);
     });
   } catch (error) {
     console.error('❌ Error crítico al iniciar servidor:', error);
