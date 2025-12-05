@@ -8,106 +8,27 @@ import {
 import { autenticarUsuario } from '../middleware/autenticacionMiddleware.js';
 import sgMail from '@sendgrid/mail';
 
-// AL PRINCIPIO de rutasAutenticacion.js, DESPUÉS de los imports:
-
-console.log('🔍 ====== INICIO DEBUG ======');
-console.log('🔍 Verificando TODAS las variables de entorno:');
-
-// 1. Lista TODAS las variables disponibles
-const todasLasVariables = Object.keys(process.env);
-console.log(`🔍 Total de variables: ${todasLasVariables.length}`);
-
-// 2. Busca específicamente EMAIL_FROM
-console.log('🔍 Buscando EMAIL_FROM...');
-let emailFromEncontrado = false;
-
-todasLasVariables.forEach(key => {
-  if (key === 'EMAIL_FROM') {
-    emailFromEncontrado = true;
-    console.log(`✅ EMAIL_FROM ENCONTRADO: "${process.env[key]}"`);
-  }
-  
-  // También muestra cualquier variable que contenga "EMAIL" o "FROM"
-  if (key.includes('EMAIL') || key.includes('FROM')) {
-    const valor = process.env[key];
-    const maskedVal = key.includes('KEY') || key.includes('SECRET') 
-      ? `***${valor.substring(valor.length - 4)}` 
-      : valor;
-    console.log(`   ${key}: ${maskedVal}`);
-  }
-});
-
-if (!emailFromEncontrado) {
-  console.error('❌ EMAIL_FROM NO ENCONTRADO en process.env');
-  console.error('❌ Variables que SÍ existen:');
-  todasLasVariables.forEach(key => {
-    console.log(`   - ${key}`);
-  });
-}
-
-// 3. Configuración de SendGrid
-console.log('🔍 Configurando SendGrid...');
-if (process.env.SENDGRID_API_KEY) {
-  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-  console.log('✅ SendGrid API Key configurada');
-  console.log(`   Key (primeros 10 chars): ${process.env.SENDGRID_API_KEY.substring(0, 10)}...`);
-} else {
-  console.error('🚨 ERROR: SENDGRID_API_KEY no encontrada');
-}
-
-console.log('🔍 ====== FIN DEBUG ======');
+// Configurar SendGrid directamente
+sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
 const router = express.Router();
 
-router.get('/test-simple', (req, res) => {
-  console.log('✅ Ruta /test-simple accedida');
-  res.json({ 
-    success: true, 
-    message: '¡Funciona!',
-    timestamp: new Date().toISOString()
-  });
-});
-
-// Middleware de logging para todas las rutas
-router.use((req, res, next) => {
-  console.log(`📥 [RUTA] ${req.method} ${req.path} - ${new Date().toISOString()}`);
-  next();
-});
-
-// Ruta de diagnóstico - DEBE IR AL PRINCIPIO
+// Ruta de diagnóstico
 router.get('/debug-env-now', (req, res) => {
-  console.log('🔍 DEBUG ENV - Variables disponibles:');
-  console.log('SENDGRID_API_KEY:', process.env.SENDGRID_API_KEY ? 'SI' : 'NO');
-  console.log('EMAIL_FROM:', process.env.EMAIL_FROM || 'NO');
-  console.log('NODE_ENV:', process.env.NODE_ENV);
-  console.log('ENTORNO:', process.env.ENTORNO);
-  
   res.json({
     success: true,
     sendgrid_key_exists: !!process.env.SENDGRID_API_KEY,
-    email_from_exists: !!process.env.EMAIL_FROM,
     sendgrid_key: process.env.SENDGRID_API_KEY ? '***' + process.env.SENDGRID_API_KEY.slice(-10) : null,
-    email_from: process.env.EMAIL_FROM,
-    all_env_keys: Object.keys(process.env).filter(key => 
-      key.includes('SENDGRID') || 
-      key.includes('EMAIL') || 
-      key.includes('NODE') ||
-      key.includes('ENTORNO')
-    )
+    node_env: process.env.NODE_ENV,
+    entorno: process.env.ENTORNO
   });
 });
 
 // POST /autenticacion/login - Login manual
 router.post('/login', async (req, res) => {
-  console.log('🔐 [RUTA LOGIN] Datos recibidos:', { 
-    identificador: req.body.identificador ? '✓' : '✗',
-    tieneContrasena: !!req.body.contrasena 
-  });
-  
   const { identificador, contrasena } = req.body;
   
   if (!identificador || !contrasena) {
-    console.log('❌ [RUTA LOGIN] Faltan credenciales');
     return res.status(400).json({ 
       exito: false, 
       error: 'Email/usuario y contraseña son requeridos' 
@@ -117,33 +38,27 @@ router.post('/login', async (req, res) => {
   try {
     const resultado = await iniciarSesion(identificador, contrasena);
     
-    console.log(`📊 [RUTA LOGIN] Resultado: ${resultado.exito ? '✅ ÉXITO' : '❌ FALLO'}`);
-    
     if (resultado.exito) {
       const token = resultado.token;
       
-      console.log('🔑 [RUTA LOGIN] Token generado:', token?.substring(0, 20) + '...');
-      
-      // Configurar cookie (opcional, depende de tu frontend)
       res.cookie('token', token, { 
         httpOnly: true, 
         secure: process.env.ENTORNO === 'produccion',
         sameSite: process.env.ENTORNO === 'produccion' ? 'none' : 'lax',
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 días (consistente con token JWT)
+        maxAge: 7 * 24 * 60 * 60 * 1000,
         path: '/'
       });
 
       return res.json({
         exito: true,
         usuario: resultado.usuario,
-        token: token,  // ← ¡IMPORTANTE para React Native/Expo!
+        token: token,
         mensaje: 'Inicio de sesión exitoso'
       });
     } else {
-      // Código específico para errores de DB
       let statusCode = 401;
       if (resultado.codigo === 'DNS_ERROR' || resultado.error?.includes('base de datos')) {
-        statusCode = 503; // Servicio no disponible
+        statusCode = 503;
       }
       
       return res.status(statusCode).json({
@@ -153,7 +68,6 @@ router.post('/login', async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('🔥 [RUTA LOGIN] Error crítico:', error.message);
     return res.status(500).json({ 
       exito: false, 
       error: 'Error del servidor al iniciar sesión' 
@@ -163,12 +77,9 @@ router.post('/login', async (req, res) => {
 
 // POST /autenticacion/registro - Registro manual
 router.post('/registro', async (req, res) => {
-  console.log('📝 [RUTA REGISTRO] Datos recibidos');
-  
   const { nombre, email, contrasena, nombreUsuario } = req.body;
   
   if (!nombre || !email || !contrasena || !nombreUsuario) {
-    console.log('❌ [RUTA REGISTRO] Faltan campos requeridos');
     return res.status(400).json({ 
       exito: false, 
       error: 'Todos los campos son requeridos' 
@@ -183,20 +94,17 @@ router.post('/registro', async (req, res) => {
       nombreUsuario
     });
     
-    console.log(`📊 [RUTA REGISTRO] Resultado: ${resultado.exito ? '✅ ÉXITO' : '❌ FALLO'}`);
-    
     if (resultado.exito) {
       return res.status(201).json({
         exito: true,
         usuario: resultado.usuario,
-        token: resultado.token,  // ← ¡AGREGA ESTO para consistencia!
+        token: resultado.token,
         mensaje: 'Usuario registrado exitosamente'
       });
     } else {
-      // Código específico para errores de DB
       let statusCode = 400;
       if (resultado.codigo === 'DNS_ERROR' || resultado.error?.includes('base de datos')) {
-        statusCode = 503; // Servicio no disponible
+        statusCode = 503;
       }
       
       return res.status(statusCode).json({
@@ -206,7 +114,6 @@ router.post('/registro', async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('🔥 [RUTA REGISTRO] Error crítico:', error.message);
     return res.status(500).json({ 
       exito: false, 
       error: 'Error del servidor en registro' 
@@ -218,13 +125,7 @@ router.post('/registro', async (req, res) => {
 router.post('/google', async (req, res) => {
   const { access_token } = req.body;
   
-  console.log('🔐 [RUTA GOOGLE] Token recibido:', access_token ? '✓' : '✗');
-  if (access_token) {
-    console.log('🔑 Token (primeros 20 chars):', access_token.substring(0, 20) + '...');
-  }
-  
   if (!access_token) {
-    console.error("❌ [RUTA GOOGLE] No se recibió access_token");
     return res.status(400).json({ 
       exito: false, 
       error: 'Token de Google es requerido' 
@@ -234,34 +135,27 @@ router.post('/google', async (req, res) => {
   try {
     const resultado = await loginConGoogle(access_token);
     
-    console.log(`📊 [RUTA GOOGLE] Resultado: ${resultado.exito ? '✅ ÉXITO' : '❌ FALLO'}`);
-    
     if (resultado.exito) {
       const token = resultado.token;
       
-      console.log("✅ [RUTA GOOGLE] Token JWT recibido:", token?.substring(0, 20) + '...');
-
-      // Configurar cookie (opcional)
       res.cookie('token', token, { 
         httpOnly: true, 
         secure: process.env.ENTORNO === 'produccion',
         sameSite: process.env.ENTORNO === 'produccion' ? 'none' : 'lax',
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 días
+        maxAge: 7 * 24 * 60 * 60 * 1000,
         path: '/'
       });
 
       return res.json({
         exito: true,
         usuario: resultado.usuario,
-        token: token,  // ← ¡CRÍTICO para React Native!
+        token: token,
         mensaje: 'Inicio de sesión con Google exitoso'
       });
     } else {
-      // Determinar código de estado apropiado
       let statusCode = 401;
       if (resultado.codigo === 'DNS_ERROR' || resultado.codigo === 'QUERY_ERROR') {
-        statusCode = 503; // Servicio no disponible
-        console.error('🚨 [RUTA GOOGLE] Error de DB:', resultado.error);
+        statusCode = 503;
       }
       
       return res.status(statusCode).json({
@@ -271,7 +165,6 @@ router.post('/google', async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('🔥 [RUTA GOOGLE] Error crítico:', error.message);
     return res.status(500).json({ 
       exito: false, 
       error: 'Error del servidor al iniciar sesión con Google' 
@@ -281,8 +174,6 @@ router.post('/google', async (req, res) => {
 
 // POST /autenticacion/logout - Cerrar sesión
 router.post('/logout', autenticarUsuario, (req, res) => {
-  console.log('🚪 [RUTA LOGOUT] Usuario:', req.usuario?.email);
-  
   res.clearCookie('token', {
     path: '/',
     httpOnly: true,
@@ -298,23 +189,18 @@ router.post('/logout', autenticarUsuario, (req, res) => {
 
 // POST /autenticacion/cambiar-contrasena - Cambiar contraseña
 router.post('/cambiar-contrasena', autenticarUsuario, async (req, res) => {
-  console.log('🔐 [RUTA CAMBIAR-CONTRASEÑA] Usuario:', req.usuario?.email);
-  
   const { contrasenaActual, nuevaContrasena } = req.body;
   const usuarioId = req.usuario.id;
   
   if (!contrasenaActual || !nuevaContrasena) {
-    console.log('❌ [RUTA CAMBIAR-CONTRASEÑA] Faltan contraseñas');
     return res.status(400).json({ 
       exito: false, 
       error: 'Contraseña actual y nueva contraseña son requeridas' 
     });
   }
   
-  // Validar que la nueva contraseña sea segura
   const regex = /^(?=.*\d).{6,}$/;
   if (!regex.test(nuevaContrasena)) {
-    console.log('❌ [RUTA CAMBIAR-CONTRASEÑA] Contraseña no cumple requisitos');
     return res.status(400).json({
       exito: false,
       error: 'La contraseña debe tener al menos 6 caracteres y contener al menos un número'
@@ -323,8 +209,6 @@ router.post('/cambiar-contrasena', autenticarUsuario, async (req, res) => {
   
   try {
     const resultado = await cambiarContrasena(usuarioId, contrasenaActual, nuevaContrasena);
-    
-    console.log(`📊 [RUTA CAMBIAR-CONTRASEÑA] Resultado: ${resultado.exito ? '✅' : '❌'}`);
     
     if (resultado.exito) {
       return res.json({
@@ -338,7 +222,6 @@ router.post('/cambiar-contrasena', autenticarUsuario, async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('🔥 [RUTA CAMBIAR-CONTRASEÑA] Error crítico:', error.message);
     return res.status(500).json({ 
       exito: false, 
       error: 'Error del servidor al cambiar contraseña' 
@@ -348,8 +231,6 @@ router.post('/cambiar-contrasena', autenticarUsuario, async (req, res) => {
 
 // GET /autenticacion/verificar - Verificar token
 router.get('/verificar', autenticarUsuario, (req, res) => {
-  console.log('✅ [RUTA VERIFICAR] Token válido para:', req.usuario?.email);
-  
   res.json({
     exito: true,
     usuario: req.usuario,
@@ -357,10 +238,8 @@ router.get('/verificar', autenticarUsuario, (req, res) => {
   });
 });
 
-// Ruta de prueba simple (sin DB)
+// Ruta de prueba simple
 router.get('/status', (req, res) => {
-  console.log('📡 [RUTA STATUS] Health check');
-  
   res.json({
     exito: true,
     servicio: 'autenticacion',
@@ -369,27 +248,11 @@ router.get('/status', (req, res) => {
   });
 });
 
-router.get('/config-email', (req, res) => {
-  res.json({
-    sendgrid_key_exists: !!process.env.SENDGRID_API_KEY,
-    sendgrid_key_prefix: process.env.SENDGRID_API_KEY ? process.env.SENDGRID_API_KEY.substring(0, 5) : 'no-key',
-    email_from: process.env.EMAIL_FROM,
-    timestamp: new Date().toISOString()
-  });
-});
-
 // POST /enviarCorreo - Enviar código de verificación
 router.post('/enviarCorreo', async (req, res) => {
-  console.log('📧 [RUTA ENVIAR-CORREO] Datos recibidos:', {
-    correo: req.body.correo ? '✓' : '✗',
-    tieneCodigo: !!req.body.codigo,
-    modo: req.body.modo || 'no especificado'
-  });
-  
   const { correo, codigo, modo } = req.body;
   
   if (!correo) {
-    console.log('❌ [RUTA ENVIAR-CORREO] Falta correo');
     return res.status(400).json({ 
       exito: false, 
       error: 'Correo electrónico es requerido' 
@@ -397,7 +260,6 @@ router.post('/enviarCorreo', async (req, res) => {
   }
   
   if (!codigo) {
-    console.log('❌ [RUTA ENVIAR-CORREO] Falta código');
     return res.status(400).json({ 
       exito: false, 
       error: 'Código de verificación es requerido' 
@@ -405,8 +267,6 @@ router.post('/enviarCorreo', async (req, res) => {
   }
   
   try {
-    console.log('🔐 [RUTA ENVIAR-CORREO] Enviando código:', codigo.substring(0, 3) + '...');
-    
     // Determinar asunto según el modo
     let asunto = 'Tu código de verificación - Rumbo';
     if (modo === 'crear') {
@@ -415,10 +275,10 @@ router.post('/enviarCorreo', async (req, res) => {
       asunto = 'Recuperación de contraseña - Rumbo';
     }
     
-    // Configurar el email - ¡USA LA VARIABLE EMAIL_FROM de Northflank!
+    // Configurar el email - CORREO FIJO
     const msg = {
       to: correo,
-      from: process.env.EMAIL_FROM,  // ← Esto viene de Northflank
+      from: 'cdmxrumbo@gmail.com',  // ← CORREO FIJO DIRECTAMENTE
       subject: asunto,
       text: `Tu código de verificación es: ${codigo}`,
       html: `
@@ -468,10 +328,7 @@ router.post('/enviarCorreo', async (req, res) => {
       `,
     };
     
-    // Enviar email
     await sgMail.send(msg);
-    
-    console.log('✅ [RUTA ENVIAR-CORREO] Correo enviado exitosamente a:', correo);
     
     return res.json({
       exito: true,
@@ -481,39 +338,11 @@ router.post('/enviarCorreo', async (req, res) => {
     });
     
   } catch (error) {
-    console.error('🔥 [RUTA ENVIAR-CORREO] Error crítico:', error.message);
-    
-    // Si es error de SendGrid
-    if (error.response) {
-      console.error('🔧 SendGrid error details:', error.response.body);
-    }
+    console.error('Error enviando correo:', error.message);
     
     return res.status(500).json({ 
       exito: false, 
-      error: 'Error al enviar el correo',
-      detalle: process.env.ENTORNO === 'desarrollo' ? error.message : undefined
-    });
-  }
-});
-
-// RUTA TEMPORAL PARA DIAGNÓSTICO - Eliminar después
-router.get('/debug-db', async (req, res) => {
-  try {
-    const { verificarConexionDB } = await import('../configuracion/basedeDatos.js');
-    const dbStatus = await verificarConexionDB();
-    
-    res.json({
-      timestamp: new Date().toISOString(),
-      database_status: dbStatus.conectado ? 'connected' : 'disconnected',
-      database_error: dbStatus.error,
-      database_dns_error: dbStatus.esErrorDNS,
-      environment: process.env.ENTORNO,
-      hostname: process.env.DATABASE_URL?.match(/@([^:]+)/)?.[1] || 'no-detectado'
-    });
-  } catch (error) {
-    res.status(500).json({
-      error: error.message,
-      stack: error.stack
+      error: 'Error al enviar el correo'
     });
   }
 });
