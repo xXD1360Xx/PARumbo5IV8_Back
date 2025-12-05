@@ -76,6 +76,17 @@ console.log('✅ Rutas importadas correctamente');
 app.use('/api/auth', rutasAutenticacion);
 console.log('✅ Rutas montadas en /api/auth');
 
+app.get('/debug-middleware', (req, res) => {
+  console.log('🔍 Middleware debug - Ruta accedida:', req.path);
+  res.json({
+    message: 'Middleware funciona',
+    path: req.path,
+    method: req.method,
+    timestamp: new Date().toISOString()
+  });
+});
+
+
 // Ruta de prueba simple sin DB
 app.get('/api/test', (req, res) => {
   res.json({ 
