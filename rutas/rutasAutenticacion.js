@@ -4,8 +4,8 @@ import {
   registrarUsuario, 
   loginConGoogle,
   cambiarContrasena  
-} from './controladores/autenticacionControlador.js';
-import { autenticarUsuario, logAutenticado  } from './middleware/autenticacionMiddleware.js';
+} from '../controladores/autenticacionControlador.js';
+import { autenticarUsuario, logAutenticado  } from '../middleware/autenticacionMiddleware.js';
 import sgMail from '@sendgrid/mail';
 
 // ============ DEBUG INICIAL ============
