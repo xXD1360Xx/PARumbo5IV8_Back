@@ -10,14 +10,14 @@ import sgMail from '@sendgrid/mail';
 
 // CONFIGURACIÓN SEGURA DE SENDGRID
 const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
-const EMAIL_FROM = process.env.EMAIL_FROM;
+const EMAIL_FROMM = process.env.EMAIL_FROMM;
 
 console.log('🔍 Variables de SendGrid:');
 console.log('  - SENDGRID_API_KEY:', SENDGRID_API_KEY 
   ? `✅ Presente (${SENDGRID_API_KEY.substring(0, 10)}...)` 
   : '❌ FALTANTE');
-console.log('  - EMAIL_FROM:', EMAIL_FROM 
-  ? `✅ Presente: ${EMAIL_FROM}` 
+console.log('  - EMAIL_FROMM:', EMAIL_FROMM
+  ? `✅ Presente: ${EMAIL_FROMM}` 
   : '❌ FALTANTE');
 
 if (SENDGRID_API_KEY) {
@@ -49,16 +49,16 @@ router.use((req, res, next) => {
 router.get('/debug-env-now', (req, res) => {
   console.log('🔍 DEBUG ENV - Variables disponibles:');
   console.log('SENDGRID_API_KEY:', process.env.SENDGRID_API_KEY ? 'SI' : 'NO');
-  console.log('EMAIL_FROM:', process.env.EMAIL_FROM || 'NO');
+  console.log('EMAIL_FROMM:', process.env.EMAIL_FROMM || 'NO');
   console.log('NODE_ENV:', process.env.NODE_ENV);
   console.log('ENTORNO:', process.env.ENTORNO);
   
   res.json({
     success: true,
     sendgrid_key_exists: !!process.env.SENDGRID_API_KEY,
-    email_from_exists: !!process.env.EMAIL_FROM,
+    email_from_exists: !!process.env.EMAIL_FROMM,
     sendgrid_key: process.env.SENDGRID_API_KEY ? '***' + process.env.SENDGRID_API_KEY.slice(-10) : null,
-    email_from: process.env.EMAIL_FROM,
+    email_from: process.env.EMAIL_FROMM,
     all_env_keys: Object.keys(process.env).filter(key => 
       key.includes('SENDGRID') || 
       key.includes('EMAIL') || 
@@ -344,7 +344,7 @@ router.get('/config-email', (req, res) => {
   res.json({
     sendgrid_key_exists: !!process.env.SENDGRID_API_KEY,
     sendgrid_key_prefix: process.env.SENDGRID_API_KEY ? process.env.SENDGRID_API_KEY.substring(0, 5) : 'no-key',
-    email_from: process.env.EMAIL_FROM,
+    email_from: process.env.EMAIL_FROMM,
     timestamp: new Date().toISOString()
   });
 });
@@ -389,7 +389,7 @@ router.post('/enviarCorreo', async (req, res) => {
     // Configurar el email - ¡USA LA VARIABLE EMAIL_FROM de Northflank!
     const msg = {
       to: correo,
-      from: process.env.EMAIL_FROM,  // ← Esto viene de Northflank
+      from: process.env.EMAIL_FROMM,  // ← Esto viene de Northflank
       subject: asunto,
       text: `Tu código de verificación es: ${codigo}`,
       html: `
