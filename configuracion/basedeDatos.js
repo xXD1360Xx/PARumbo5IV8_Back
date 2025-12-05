@@ -1,16 +1,43 @@
 import pkg from 'pg';
+const { Pool } = pkg;
 
-console.log('🚀 ========================================');
-console.log('🚀 INICIANDO CONFIGURACIÓN POSTGRESQL');
-console.log('🚀 ========================================');
+// ========== CONFIGURACIÓN DINÁMICA ==========
+// Extraer configuración de DATABASE_URL
+const DATABASE_URL = process.env.DATABASE_URL;
 
-// ========== CONFIGURACIÓN EXPLÍCITA (HARDCODEADA) ==========
+// Parsear la URL de conexión
+const parseDatabaseUrl = (url) => {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname;
+    const user = parsed.username;
+    const pass = parsed.password;
+    const db = parsed.pathname?.substring(1);
+    
+    console.log('🔍 Componentes parseados:');
+    console.log('   Host:', host);
+    console.log('   Usuario:', user ? '✅ ' + user : '❌ No especificado');
+    console.log('   Password:', pass ? '✅ ' + pass.substring(0, 3) + '...' : '❌ No especificada');
+    console.log('   Database:', db ? '✅ ' + db : '❌ No especificada');
+    
+    // 2. Retornar configuración
+    return {
+      host: host,
+      port: 5432,  // PostgreSQL default
+      database: db,
+      user: user,
+      password: pass
+    };
+  } catch (error) {
+    console.warn('⚠️ No se pudo parsear DATABASE_URL');
+  }
+};
+
+const dbConfig = parseDatabaseUrl(DATABASE_URL);
+
+// ========== CONFIGURACIÓN DEL POOL ==========
 const poolConfig = {
-  host: 'dpg-d4em2beuk2gs739kdjkg-a.oregon-postgres.render.com',
-  port: 5432,
-  database: 'rumbo_database',
-  user: 'rumbo_database_user',
-  password: '5zocs82oQcUfviisukaZwEGf8b0hAHAX',
+  ...dbConfig,
   ssl: {
     rejectUnauthorized: false,
     require: true
@@ -18,374 +45,267 @@ const poolConfig = {
   max: 10,
   min: 2,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 20000, // 20 segundos para DNS lento
-  
+  connectionTimeoutMillis: 20000,
   keepAlive: true,
   keepAliveInitialDelayMillis: 10000,
-  application_name: 'northflank_app'
+  application_name: 'rumbo_backend'
 };
 
-console.log('🛠️ ========= CONFIGURACIÓN POOL =========');
-console.log('   Host:', poolConfig.host);
-console.log('   Hostname completo?:', poolConfig.host.includes('.oregon-postgres.render.com') ? '✅ SÍ' : '❌ NO');
-console.log('   Longitud hostname:', poolConfig.host.length, 'caracteres');
-console.log('   DB:', poolConfig.database);
-console.log('   Usuario:', poolConfig.user);
-console.log('   Puerto:', poolConfig.port);
-console.log('   Password length:', poolConfig.password ? '***' + poolConfig.password.length + ' caracteres***' : 'NO');
-console.log('   SSL:', poolConfig.ssl.require ? '✅ REQUERIDO' : '❌ NO');
-console.log('   rejectUnauthorized:', poolConfig.ssl.rejectUnauthorized ? '✅ true' : '❌ false');
-console.log('   Timeout conexión:', poolConfig.connectionTimeoutMillis, 'ms');
-console.log('   Max connections:', poolConfig.max);
-console.log('   Min connections:', poolConfig.min);
-console.log('🛠️ ======================================');
-
-// Verificación CRÍTICA del hostname
-if (!poolConfig.host.includes('.oregon-postgres.render.com')) {
-  console.error('🚨 ¡ALERTA CRÍTICA! Hostname parece incompleto');
-  console.error('   Actual:', poolConfig.host);
-  console.error('   Debería terminar en: .oregon-postgres.render.com');
-  console.error('   Ejemplo correcto: dpg-xxxx.oregon-postgres.render.com');
-}
-
-// Verificar formato de password
-if (poolConfig.password && poolConfig.password.length < 10) {
-  console.error('⚠️ Advertencia: Password muy corta');
-}
+console.log('📊 PostgreSQL configurado');
+console.log(`   Host: ${poolConfig.host}`);
+console.log(`   Database: ${poolConfig.database}`);
+console.log(`   User: ${poolConfig.user}`);
 
 // ========== CREAR POOL ==========
-console.log('\n🔨 Creando pool de conexiones PostgreSQL...');
-const pool = new pkg.Pool(poolConfig);
+const pool = new Pool(poolConfig);
 
-console.log('✅ Pool PostgreSQL creado exitosamente');
-
-// ========== EVENTOS DEL POOL CON MEJOR LOGGING ==========
-pool.on('connect', (client) => {
-  const timestamp = new Date().toISOString();
-  console.log(`🔄 [${timestamp}] Nueva conexión establecida - PID: ${client.processID}`);
-});
-
-pool.on('acquire', (client) => {
-  console.log('🔑 Cliente adquirido del pool');
-});
-
-pool.on('release', (client) => {
-  console.log('🔓 Cliente liberado al pool');
-});
-
-pool.on('remove', (client) => {
-  console.log('🗑️ Cliente removido del pool');
-});
-
+// ========== MANEJO DE ERRORES DEL POOL ==========
 pool.on('error', (err) => {
-  const timestamp = new Date().toISOString();
-  console.error(`\n❌ ======= ERROR FATAL EN POOL [${timestamp}] =======`);
-  console.error('❌ Mensaje:', err.message);
-  console.error('❌ Código:', err.code);
-  
-  // Diagnóstico específico
-  if (err.message.includes('ENOTFOUND') || err.message.includes('getaddrinfo')) {
-    console.error(`
-🚨🚨🚨 ERROR DNS DETECTADO 🚨🚨🚨
-Hostname que falló: ${poolConfig.host}
-
-RAZONES COMUNES:
-1. Hostname incorrecto o incompleto
-2. Problemas de DNS en Northflank
-3. La base de datos fue eliminada en Render
-4. Firewall bloqueando la conexión
-
-VERIFICA EN RENDER:
-1. Ve a dashboard.render.com
-2. Busca tu servicio PostgreSQL
-3. Copia el "External Database URL" actualizado
-4. Verifica que esté en estado "Active"
-
-PRUEBA MANUALMENTE:
-1. Ejecuta: nslookup ${poolConfig.host}
-2. Si no resuelve, el hostname es incorrecto
-    `);
-  }
-  
-  if (err.message.includes('password authentication') || err.code === '28P01') {
-    console.error(`
-🔐 ERROR DE AUTENTICACIÓN
-Credenciales incorrectas
-
-VERIFICA:
-1. Usuario: ${poolConfig.user}
-2. Contraseña: *** (${poolConfig.password?.length} caracteres)
-3. En Render dashboard, verifica las credenciales actuales
-    `);
-  }
-  
-  if (err.message.includes('SSL')) {
-    console.error(`
-🔐 ERROR SSL
-Problema con conexión segura
-
-PRUEBA:
-1. Cambia a: ssl: { rejectUnauthorized: false }
-2. O usa: ssl: true
-3. O deshabilita temporalmente: ssl: false (solo para pruebas)
-    `);
-  }
-  
-  if (err.message.includes('timeout') || err.code === 'ETIMEDOUT') {
-    console.error(`
-⏱️  ERROR TIMEOUT
-La conexión es muy lenta o se pierde
-
-SOLUCIONES:
-1. Aumenta connectionTimeoutMillis a 30000
-2. Verifica la red entre Northflank y Render
-3. Revisa IP Whitelist en Render
-    `);
-  }
-  
-  console.error('❌ =============================================\n');
+  console.error('❌ Error inesperado en el pool de PostgreSQL:', err.message);
 });
 
-// ========== FUNCIÓN DE VERIFICACIÓN MEJORADA ==========
-export const verificarConexionDB = async (intentos = 3) => {
-  console.log('\n🔍 ===== INICIANDO VERIFICACIÓN DE CONEXIÓN =====');
-  console.log(`🔍 Intentos configurados: ${intentos}`);
-  console.log(`🔍 Hostname: ${poolConfig.host}`);
-  console.log(`🔍 Base de datos: ${poolConfig.database}`);
-  console.log(`🔍 Usuario: ${poolConfig.user}`);
-  console.log(`🔍 Timeout: ${poolConfig.connectionTimeoutMillis}ms`);
-  
+// ========== FUNCIONES DE CONEXIÓN Y VERIFICACIÓN ==========
+
+/**
+ * Verifica la conexión a PostgreSQL
+ * @returns {Promise<Object>} Resultado de la verificación
+ */
+export const verificarConexionDB = async () => {
   let client;
-  for (let i = 0; i < intentos; i++) {
-    console.log(`\n🔄 ===== INTENTO ${i + 1}/${intentos} =====`);
+  
+  try {
+    client = await pool.connect();
     
-    try {
-      console.log(`📡 Conectando a ${poolConfig.host}:${poolConfig.port}...`);
-      const inicioConexion = Date.now();
-      
-      client = await pool.connect();
-      const tiempoConexion = Date.now() - inicioConexion;
-      
-      console.log(`✅ Conexión exitosa en ${tiempoConexion}ms`);
-      console.log(`🔧 PID del cliente: ${client.processID}`);
-      
-      // Query de verificación básica
-      console.log('🔍 Ejecutando verificación...');
-      const result = await client.query(`
-        SELECT 
-          NOW() as server_time,
-          version() as pg_version,
-          current_database() as db_name,
-          current_user as db_user,
-          inet_server_addr() as server_ip
-      `);
-      
-      console.log('🎉 ===== CONEXIÓN EXITOSA =====');
-      console.log('⏰ Hora servidor:', result.rows[0].server_time);
-      console.log('📊 PostgreSQL:', result.rows[0].pg_version.split(',')[0]);
-      console.log('🗄️  Base datos:', result.rows[0].db_name);
-      console.log('👤 Usuario:', result.rows[0].db_user);
-      console.log('🌐 IP servidor:', result.rows[0].server_ip);
-      console.log('🔒 SSL:', client.connection?.stream?.encrypted ? '✅ ACTIVADO' : '❌ DESACTIVADO');
-      console.log('⚡ Tiempo:', tiempoConexion + 'ms');
-      
-      // Verificar tabla usuarios
-      try {
-        const tables = await client.query(`
-          SELECT EXISTS (
-            SELECT FROM information_schema.tables 
-            WHERE table_schema = 'public' 
-            AND table_name = 'usuarios'
-          ) as usuarios_exists,
-          (SELECT COUNT(*) FROM usuarios) as total_usuarios
-        `);
-        console.log('📋 Tabla usuarios:', 
-          tables.rows[0].usuarios_exists ? `✅ EXISTE (${tables.rows[0].total_usuarios} registros)` : '❌ NO EXISTE'
-        );
-      } catch (tableError) {
-        console.log('⚠️ No se pudo verificar tabla usuarios:', tableError.message);
-      }
-      
-      // Estadísticas de conexión
-      try {
-        const stats = await client.query(`
-          SELECT 
-            COUNT(*) as total_connections,
-            COUNT(CASE WHEN state = 'active' THEN 1 END) as active_connections
-          FROM pg_stat_activity 
-          WHERE datname = current_database()
-        `);
-        console.log('📈 Conexiones DB:', {
-          total: stats.rows[0].total_connections,
-          activas: stats.rows[0].active_connections
-        });
-      } catch (statsError) {
-        // Ignorar si no tiene permisos
-      }
-      
-      return { 
-        success: true,
-        connected: true, 
-        time: result.rows[0].server_time,
-        version: result.rows[0].pg_version,
-        database: result.rows[0].db_name,
-        user: result.rows[0].db_user,
-        ssl: client.connection?.stream?.encrypted || false,
-        connectionTime: tiempoConexion,
-        timestamp: new Date().toISOString()
-      };
-      
-    } catch (error) {
-      console.error(`\n❌ ===== ERROR EN INTENTO ${i + 1} =====`);
-      console.error('❌ Tipo:', error.name);
-      console.error('❌ Mensaje:', error.message);
-      console.error('❌ Código:', error.code);
-      
-      // Diagnóstico automático
-      if (error.message.includes('ENOTFOUND') || error.message.includes('getaddrinfo')) {
-        console.error('🔍 Diagnóstico: ERROR DNS');
-        console.error('💡 El hostname no se resuelve:', poolConfig.host);
-        console.error('💡 Verifica:');
-        console.error('   1. El hostname está completo');
-        console.error('   2. La DB existe en Render');
-        console.error('   3. No hay typos en el hostname');
-      }
-      else if (error.message.includes('password') || error.code === '28P01') {
-        console.error('🔍 Diagnóstico: ERROR CREDENCIALES');
-        console.error('💡 Usuario/contraseña incorrectos');
-      }
-      else if (error.message.includes('does not exist')) {
-        console.error('🔍 Diagnóstico: DB NO EXISTE');
-        console.error('💡 La base de datos', poolConfig.database, 'no existe');
-      }
-      else if (error.message.includes('SSL') || error.message.includes('TLS')) {
-        console.error('🔍 Diagnóstico: ERROR SSL');
-        console.error('💡 Prueba cambiar configuración SSL');
-      }
-      else if (error.message.includes('timeout') || error.code === 'ETIMEDOUT') {
-        console.error('🔍 Diagnóstico: TIMEOUT');
-        console.error('💡 Conexión muy lenta o bloqueada');
-      }
-      else {
-        console.error('🔍 Diagnóstico: ERROR DESCONOCIDO');
-        console.error('💡 Stack completo:', error.stack);
-      }
-      
-      // Backoff exponencial
-      if (i < intentos - 1) {
-        const waitTime = Math.pow(2, i) * 1000;
-        console.log(`\n⏳ Esperando ${waitTime/1000} segundos antes de reintentar...`);
-        await new Promise(resolve => setTimeout(resolve, waitTime));
-      } else {
-        console.error(`\n🚨 ===== FALLARON TODOS LOS ${intentos} INTENTOS =====`);
-        
-        const errorSummary = {
-          host: poolConfig.host,
-          database: poolConfig.database,
-          user: poolConfig.user,
-          errorCode: error.code,
-          errorMessage: error.message,
-          timestamp: new Date().toISOString()
-        };
-        
-        console.error('📋 Resumen error:', errorSummary);
-        
-        return { 
-          success: false,
-          connected: false, 
-          error: error.message,
-          code: error.code,
-          summary: errorSummary,
-          dnsError: error.message.includes('ENOTFOUND') || error.message.includes('getaddrinfo'),
-          authError: error.message.includes('password') || error.code === '28P01',
-          sslError: error.message.includes('SSL'),
-          timeoutError: error.message.includes('timeout') || error.code === 'ETIMEDOUT'
-        };
-      }
-    } finally {
-      if (client) {
-        client.release();
-        console.log('🔓 Cliente liberado');
-      }
+    // Verificación básica
+    const result = await client.query(`
+      SELECT 
+        NOW() as server_time,
+        version() as pg_version,
+        current_database() as db_name,
+        current_user as db_user
+    `);
+    
+    // Verificar las 3 tablas principales
+    const tablas = await client.query(`
+      SELECT 
+        EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'users') as users_exists,
+        EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'user_vocational_results') as vocational_exists,
+        EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'user_test_results') as tests_exists,
+        (SELECT COUNT(*) FROM pg_tables WHERE schemaname = 'public') as total_tables
+    `);
+    
+    const tablaInfo = {
+      users: tablas.rows[0].users_exists ? '✅ EXISTE' : '❌ NO EXISTE',
+      user_vocational_results: tablas.rows[0].results_exists ? '✅ EXISTE' : '❌ NO EXISTE',
+      user_test_results: tablas.rows[0].results_exists ? '✅ EXISTE' : '❌ NO EXISTE',
+      total_tables: tablas.rows[0].total_tables
+    };
+    
+    console.log('🎉 Conexión PostgreSQL exitosa');
+    console.log(`   Database: ${result.rows[0].db_name}`);
+    console.log(`   User: ${result.rows[0].db_user}`);
+    console.log(`   Tabla 'users': ${tablaInfo.users}`);
+    console.log(`   Tabla 'user_vocational_results': ${tablaInfo.user_vocational_results}`);
+    console.log(`   Tabla 'user_test_results': ${tablaInfo.user_test_results}`);
+    console.log(`   Total tablas en public: ${tablaInfo.total_tables}`);
+    
+    return {
+      success: true,
+      connected: true,
+      database: result.rows[0].db_name,
+      user: result.rows[0].db_user,
+      server_time: result.rows[0].server_time,
+      version: result.rows[0].pg_version,
+      tables: tablaInfo
+    };
+    
+  } catch (error) {
+    console.error('❌ Error conectando a PostgreSQL:', error.message);
+    
+    // Análisis rápido del error
+    const errorAnalysis = {
+      dns: error.message.includes('ENOTFOUND') || error.message.includes('getaddrinfo'),
+      auth: error.message.includes('password') || error.code === '28P01',
+      ssl: error.message.includes('SSL'),
+      timeout: error.message.includes('timeout') || error.code === 'ETIMEDOUT',
+      db_not_found: error.message.includes('does not exist') || error.message.includes('database')
+    };
+    
+    return {
+      success: false,
+      connected: false,
+      error: error.message,
+      code: error.code,
+      analysis: errorAnalysis
+    };
+  } finally {
+    if (client) {
+      client.release();
     }
   }
 };
 
-// ========== FUNCIÓN DE DIAGNÓSTICO COMPLETO ==========
-export const diagnosticoDB = async () => {
-  console.log('\n🔬 ===== DIAGNÓSTICO COMPLETO DB =====');
-  console.log('⏱️  Iniciando:', new Date().toISOString());
+/**
+ * Obtiene información detallada de las tablas
+ * @returns {Promise<Object>} Información de tablas y columnas
+ */
+export const obtenerEstructuraTablas = async () => {
+  let client;
   
-  // 1. Verificar configuración
-  console.log('\n1. 📋 CONFIGURACIÓN ACTUAL:');
-  console.log('   Hostname:', poolConfig.host);
-  console.log('   Completo?:', poolConfig.host.includes('.oregon-postgres.render.com') ? '✅' : '❌');
-  console.log('   DB:', poolConfig.database);
-  console.log('   Usuario:', poolConfig.user);
-  console.log('   Puerto:', poolConfig.port);
-  console.log('   SSL:', poolConfig.ssl.require ? '✅ Activado' : '❌ Desactivado');
-  console.log('   Timeout:', poolConfig.connectionTimeoutMillis + 'ms');
-  
-  // 2. Intentar conexión
-  console.log('\n2. 🔌 PRUEBA DE CONEXIÓN:');
   try {
-    const resultado = await verificarConexionDB(2);
+    client = await pool.connect();
     
-    if (resultado.connected) {
-      console.log('   ✅ CONEXIÓN EXITOSA');
-      console.log('   ⏱️  Tiempo:', resultado.connectionTime + 'ms');
-      console.log('   🔒 SSL:', resultado.ssl ? '✅' : '❌');
-      console.log('   🗄️  DB:', resultado.database);
-    } else {
-      console.log('   ❌ CONEXIÓN FALLIDA');
-      console.log('   Error:', resultado.error);
-      console.log('   Código:', resultado.code);
-      
-      if (resultado.dnsError) {
-        console.log('   🔍 Problema: DNS - Hostname no resuelve');
-      }
-      if (resultado.authError) {
-        console.log('   🔍 Problema: Autenticación - Credenciales inválidas');
-      }
-      if (resultado.sslError) {
-        console.log('   🔍 Problema: SSL - Configuración incorrecta');
-      }
-    }
+    // Obtener todas las tablas
+    const tablas = await client.query(`
+      SELECT 
+        table_name,
+        table_type
+      FROM information_schema.tables 
+      WHERE table_schema = 'public'
+      ORDER BY table_name
+    `);
     
-    return resultado;
+    // Para cada tabla, obtener sus columnas
+    const tablasConColumnas = await Promise.all(
+      tablas.rows.map(async (tabla) => {
+        const columnas = await client.query(`
+          SELECT 
+            column_name,
+            data_type,
+            is_nullable,
+            column_default
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = $1
+          ORDER BY ordinal_position
+        `, [tabla.table_name]);
+        
+        return {
+          nombre: tabla.table_name,
+          tipo: tabla.table_type,
+          columnas: columnas.rows
+        };
+      })
+    );
+    
+    // Buscar específicamente tus 3 tablas
+    const misTablas = {
+      users: tablasConColumnas.find(t => t.nombre === 'users'),
+      user_vocational_results: tablasConColumnas.find(t => t.nombre === 'user_vocational_results'),
+      user_test_results: tablasConColumnas.find(t => t.nombre === 'user_test_results')
+    };
+    
+    return {
+      success: true,
+      total_tablas: tablas.rows.length,
+      todas_tablas: tablasConColumnas,
+      mis_tablas: misTablas
+    };
     
   } catch (error) {
-    console.log('   ❌ ERROR EN DIAGNÓSTICO:', error.message);
+    console.error('❌ Error obteniendo estructura:', error.message);
+    return {
+      success: false,
+      error: error.message
+    };
+  } finally {
+    if (client) {
+      client.release();
+    }
+  }
+};
+
+
+/**
+ * Función de prueba rápida de conexión
+ * @returns {Promise<Object>} Resultado simple
+ */
+export const testConexionSimple = async () => {
+  try {
+    const client = await pool.connect();
+    const result = await client.query('SELECT 1 as ok');
+    client.release();
+    
     return { 
-      success: false, 
+      ok: true, 
+      test: result.rows[0].ok,
+      message: 'Conexión a PostgreSQL funcional'
+    };
+  } catch (error) {
+    return { 
+      ok: false, 
       error: error.message,
-      timestamp: new Date().toISOString()
+      message: 'Error conectando a PostgreSQL'
     };
   }
 };
 
-// ========== FUNCIÓN DE PRUEBA RÁPIDA ==========
-export const testConexionRapida = async () => {
-  console.log('\n⚡ TEST RÁPIDO DE CONEXIÓN');
-  try {
-    const client = await pool.connect();
-    const result = await client.query('SELECT 1 as test');
-    client.release();
-    console.log('✅ Test exitoso');
-    return { ok: true, test: result.rows[0].test };
-  } catch (error) {
-    console.error('❌ Test fallido:', error.message);
-    return { ok: false, error: error.message };
+/**
+ * Inicializa la base de datos (verifica conexión y tablas)
+ * @returns {Promise<Object>} Estado de inicialización
+ */
+export const inicializarDB = async () => {
+  console.log('🔧 Inicializando conexión a PostgreSQL...');
+  
+  const conexion = await verificarConexionDB();
+  
+  if (!conexion.success) {
+    console.error('❌ No se pudo conectar a PostgreSQL');
+    return {
+      initialized: false,
+      connection: conexion,
+      tables: null
+    };
   }
+  
+  console.log('✅ Conexión a PostgreSQL establecida');
+  
+  // Verificar estructura de tablas
+  const estructura = await obtenerEstructuraTablas();
+  
+  if (!estructura.success) {
+    console.warn('⚠️ No se pudo obtener estructura de tablas');
+  } else {
+    console.log(`📊 Se encontraron ${estructura.total_tablas} tablas en la base de datos`);
+    
+    // Verificar si existen tus tablas principales
+    if (estructura.mis_tablas.users) {
+      console.log(`   ✅ Tabla 'users' encontrada (${estructura.mis_tablas.users.columnas.length} columnas)`);
+    } else {
+      console.log('   ⚠️ Tabla \'users\' no encontrada');
+    }
+    
+    if (estructura.mis_tablas.user_vocational_results) {
+      console.log(`   ✅ Tabla 'user_vocational_results' encontrada (${estructura.mis_tablas.user_vocational_results.columnas.length} columnas)`);
+    } else {
+      console.log('   ⚠️ Tabla \'user_vocational_results\' no encontrada');
+    }
+
+    if (estructura.mis_tablas.user_test_results) {
+      console.log(`   ✅ Tabla 'user_test_results' encontrada (${estructura.mis_tablas.user_test_results.columnas.length} columnas)`);
+    } else {
+      console.log('   ⚠️ Tabla \'user_test_results\' no encontrada');
+    }
+  }
+  
+  return {
+    initialized: true,
+    connection: conexion,
+    tables: estructura.success ? estructura : null
+  };
 };
 
-// Exportar pool
+// ========== EXPORTAR ==========
 export { pool };
 
-console.log('\n✅ Módulo PostgreSQL cargado completamente');
-console.log('📤 Exportados:');
-console.log('   - pool (pool de conexiones)');
-console.log('   - verificarConexionDB()');
-console.log('   - diagnosticoDB()');
-console.log('   - testConexionRapida()');
-console.log('=======================================\n');
+// Inicialización automática
+inicializarDB().then(estado => {
+  if (estado.initialized) {
+    console.log('🚀 PostgreSQL listo');
+  } else {
+    console.error('❌ PostgreSQL no se pudo conectar');
+  }
+});
+
+console.log('✅ Módulo PostgreSQL cargado');
+console.log('📤 Exportados: pool, verificarConexionDB, obtenerEstructuraTablas, testConexionSimple, inicializarDB');
