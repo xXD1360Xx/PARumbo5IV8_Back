@@ -2,6 +2,7 @@ import axios from "axios";
 import { pool } from '../configuracion/basedeDatos.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { v4 as uuidv4 } from 'uuid';
 
 // Login normal (usuario/contraseña)
 export const iniciarSesion = async (identificador, contrasena) => {
@@ -27,10 +28,13 @@ export const iniciarSesion = async (identificador, contrasena) => {
     client = await pool.connect();
     console.log("✅ Conexión a DB establecida");
     
+    // CORREGIDO: Usar _users con columnas correctas
     const query = `
-      SELECT id, nombre, email, nombre_usuario, rol, contrasena_hash, fecha_creacion, foto_perfil 
-      FROM usuarios 
-      WHERE email = $1 OR nombre_usuario = $1
+      SELECT id, full_name as nombre, email, username as nombre_usuario, 
+             role as rol, password as contrasena_hash, 
+             created_at as fecha_creacion, avatar_url as foto_perfil 
+      FROM _users 
+      WHERE email = $1 OR username = $1
     `;
     
     const result = await client.query(query, [identificador]);
@@ -77,7 +81,7 @@ export const iniciarSesion = async (identificador, contrasena) => {
         id: usuario.id, 
         email: usuario.email,
         nombre: usuario.nombre,
-        rol: usuario.rol || 'usuario'
+        rol: usuario.rol || 'user'
       },
       JWT_SECRETO,
       { expiresIn: '7d' }
@@ -129,12 +133,12 @@ export const iniciarSesion = async (identificador, contrasena) => {
   }
 };
 
-// Registro manual
+// Registro manual - VERSIÓN CORREGIDA CON LA ESTRUCTURA REAL
 export const registrarUsuario = async (datosUsuario) => {
   let client;
   
   try {
-    const { nombre, email, contrasena, nombreUsuario } = datosUsuario;
+    const { nombre, email, contrasena, nombreUsuario, rol } = datosUsuario;
     console.log("🔍 [CONTROLADOR] Registro manual para:", email);
     
     // Validación de entrada
@@ -166,12 +170,21 @@ export const registrarUsuario = async (datosUsuario) => {
       };
     }
     
+    // Validar username
+    if (nombreUsuario.length < 3) {
+      return { 
+        exito: false, 
+        error: 'El nombre de usuario debe tener al menos 3 caracteres',
+        codigo: 'USERNAME_CORTO'
+      };
+    }
+    
     // Obtener conexión del pool
     client = await pool.connect();
     
-    // Verificar si el usuario ya existe
+    // Verificar si el usuario ya existe (usando _users con columnas correctas)
     const usuarioExistente = await client.query(
-      'SELECT id FROM usuarios WHERE email = $1 OR nombre_usuario = $2',
+      'SELECT id FROM _users WHERE email = $1 OR username = $2',
       [email, nombreUsuario]
     );
     
@@ -186,14 +199,16 @@ export const registrarUsuario = async (datosUsuario) => {
     
     // Hash de la contraseña
     const saltRounds = 10;
-    const contrasenaHash = await bcrypt.hash(contrasena, saltRounds);
+    const passwordHash = await bcrypt.hash(contrasena, saltRounds);
     
-    // Insertar nuevo usuario
+    // Generar ID único (UUID)
+    const userId = uuidv4();
+    
+    // Insertar nuevo usuario en _users (con las columnas correctas)
     const result = await client.query(
-      `INSERT INTO usuarios (nombre, email, contrasena_hash, nombre_usuario, rol) 
-       VALUES ($1, $2, $3, $4, 'usuario') 
-       RETURNING id, nombre, email, nombre_usuario, rol, fecha_creacion`,
-      [nombre, email, contrasenaHash, nombreUsuario]
+      `INSERT INTO _users (id, username, full_name, email, password, role, created_at, updated_at) 
+      VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())`,
+      [userId, nombreUsuario, nombre, email, passwordHash, rol] 
     );
     
     // Generar token para el nuevo usuario
@@ -221,6 +236,12 @@ export const registrarUsuario = async (datosUsuario) => {
     
     console.log("✅ Registro exitoso para:", email);
     console.log("🔑 Token generado (primeros 20):", token.substring(0, 20) + '...');
+    console.log("📋 Usuario creado:", {
+      id: nuevoUsuario.id,
+      username: nuevoUsuario.nombre_usuario,
+      email: nuevoUsuario.email,
+      rol: nuevoUsuario.rol
+    });
     
     return { 
       exito: true, 
@@ -232,6 +253,15 @@ export const registrarUsuario = async (datosUsuario) => {
     console.error('❌ Error en registrarUsuario:', error.message);
     console.error('🔧 Stack:', error.stack);
     
+    // Error específico de tabla no existe
+    if (error.message.includes('_users') && error.message.includes('does not exist')) {
+      return { 
+        exito: false, 
+        error: 'Error de configuración de base de datos: tabla _users no existe',
+        codigo: 'TABLA_NO_EXISTE'
+      };
+    }
+    
     // Manejo específico de errores de conexión
     if (error.message.includes('ENOTFOUND') || error.message.includes('getaddrinfo')) {
       return { 
@@ -241,7 +271,7 @@ export const registrarUsuario = async (datosUsuario) => {
       };
     }
     
-    // Error de duplicado (aunque ya verificamos, por si acaso)
+    // Error de duplicado
     if (error.message.includes('duplicate key') || error.code === '23505') {
       return { 
         exito: false, 
@@ -252,7 +282,7 @@ export const registrarUsuario = async (datosUsuario) => {
     
     return { 
       exito: false, 
-      error: 'Error del servidor en registro',
+      error: 'Error del servidor en registro: ' + error.message,
       codigo: 'ERROR_SERVIDOR'
     };
   } finally {
@@ -263,7 +293,7 @@ export const registrarUsuario = async (datosUsuario) => {
   }
 };
 
-// Login con Google
+// Login con Google - VERSIÓN CORREGIDA
 export const loginConGoogle = async (accessToken) => {
   let client;
   
@@ -323,11 +353,12 @@ export const loginConGoogle = async (accessToken) => {
     }
 
     try {
-      // Buscar usuario por email
+      // Buscar usuario por email (usando _users)
       console.log("🔍 Buscando usuario con email:", respuesta.data.email);
       const query = `
-        SELECT id, nombre, email, nombre_usuario, rol, foto_perfil, fecha_creacion 
-        FROM usuarios WHERE email = $1
+        SELECT id, full_name as nombre, email, username as nombre_usuario, 
+               role as rol, avatar_url as foto_perfil, created_at as fecha_creacion 
+        FROM _users WHERE email = $1
       `;
       const result = await client.query(query, [respuesta.data.email]);
       
@@ -338,21 +369,25 @@ export const loginConGoogle = async (accessToken) => {
         usuario = result.rows[0];
       } else {
         console.log("🆕 Creando nuevo usuario...");
-        // Crear nuevo usuario
-        const nombreUsuarioBase = respuesta.data.name?.toLowerCase().replace(/\s+/g, '_') || 'usuario';
+        // Generar ID único
+        const userId = uuidv4();
+        
+        // Crear username basado en el nombre
+        const nombreUsuarioBase = respuesta.data.name?.toLowerCase().replace(/[^a-z0-9]/g, '_') || 'usuario';
         const randomNum = Math.floor(Math.random() * 10000);
-        const nombreUsuario = `${nombreUsuarioBase}_${randomNum}`;
+        const username = `${nombreUsuarioBase}_${randomNum}`;
         
         const insertQuery = `
-          INSERT INTO usuarios (nombre, email, nombre_usuario, rol, foto_perfil) 
-          VALUES ($1, $2, $3, 'usuario', $4) 
-          RETURNING id, nombre, email, nombre_usuario, rol, foto_perfil, fecha_creacion
+          INSERT INTO _users (id, username, full_name, email, role, avatar_url, created_at, updated_at) 
+          VALUES ($1, $2, $3, $4, 'user', $5, NOW(), NOW()) 
+          RETURNING id, username as nombre_usuario, full_name as nombre, email, role as rol, avatar_url as foto_perfil, created_at as fecha_creacion
         `;
         
         const nuevoUsuario = await client.query(insertQuery, [
+          userId,
+          username,
           respuesta.data.name || respuesta.data.email.split('@')[0],
           respuesta.data.email,
-          nombreUsuario,
           respuesta.data.picture || 'https://res.cloudinary.com/de8qn7bm1/image/upload/v1762320292/Default_pfp.svg_j0obpx.png'
         ]);
         
@@ -443,7 +478,7 @@ export const loginConGoogle = async (accessToken) => {
   }
 };
 
-// Cambiar contraseña
+// Cambiar contraseña - VERSIÓN CORREGIDA
 export const cambiarContrasena = async (usuarioId, contrasenaActual, nuevaContrasena) => {
   let client;
   
@@ -461,8 +496,8 @@ export const cambiarContrasena = async (usuarioId, contrasenaActual, nuevaContra
     
     client = await pool.connect();
     
-    // Obtener usuario actual
-    const query = 'SELECT contrasena_hash FROM usuarios WHERE id = $1';
+    // Obtener usuario actual (usando _users)
+    const query = 'SELECT password as contrasena_hash FROM _users WHERE id = $1';
     const result = await client.query(query, [usuarioId]);
     
     if (result.rows.length === 0) {
@@ -488,11 +523,11 @@ export const cambiarContrasena = async (usuarioId, contrasenaActual, nuevaContra
     
     // Hash de la nueva contraseña
     const saltRounds = 10;
-    const nuevaContrasenaHash = await bcrypt.hash(nuevaContrasena, saltRounds);
+    const nuevaPasswordHash = await bcrypt.hash(nuevaContrasena, saltRounds);
     
-    // Actualizar en la base de datos
-    const updateQuery = 'UPDATE usuarios SET contrasena_hash = $1, updated_at = NOW() WHERE id = $2';
-    await client.query(updateQuery, [nuevaContrasenaHash, usuarioId]);
+    // Actualizar en la base de datos (usando _users)
+    const updateQuery = 'UPDATE _users SET password = $1, updated_at = NOW() WHERE id = $2';
+    await client.query(updateQuery, [nuevaPasswordHash, usuarioId]);
     
     console.log("✅ Contraseña actualizada para usuario ID:", usuarioId);
     
@@ -523,4 +558,33 @@ export const cerrarSesion = async (usuarioId) => {
     exito: true,
     mensaje: 'Sesión cerrada correctamente'
   };
+};
+
+// Función para obtener estructura de _users (para debug)
+export const obtenerEstructuraUsers = async () => {
+  let client;
+  try {
+    client = await pool.connect();
+    
+    const columnas = await client.query(`
+      SELECT column_name, data_type, is_nullable, column_default
+      FROM information_schema.columns
+      WHERE table_schema = 'public' 
+        AND table_name = '_users'
+      ORDER BY ordinal_position
+    `);
+    
+    console.log('📋 Columnas de la tabla _users:');
+    columnas.rows.forEach(col => {
+      console.log(`   ${col.column_name} (${col.data_type}) - Nulo: ${col.is_nullable === 'YES' ? '✅ SÍ' : '❌ NO'}`);
+    });
+    
+    return columnas.rows;
+    
+  } catch (error) {
+    console.error('❌ Error obteniendo estructura:', error.message);
+    return null;
+  } finally {
+    if (client) client.release();
+  }
 };
