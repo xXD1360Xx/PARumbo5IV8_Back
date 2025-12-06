@@ -29,6 +29,8 @@ const parseDatabaseUrl = (url) => {
   }
 };
 
+const parsed = parseDatabaseUrl(DATABASE_URL);
+
 if (!parsed) {
   console.error('❌ ERROR CRÍTICO: No se pudo obtener configuración de DB');
   process.exit(1); // Detener la aplicación
