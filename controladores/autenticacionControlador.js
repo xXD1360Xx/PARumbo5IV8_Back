@@ -207,7 +207,8 @@ export const registrarUsuario = async (datosUsuario) => {
     // Insertar nuevo usuario en _users (con las columnas correctas)
     const result = await client.query(
       `INSERT INTO _users (id, username, full_name, email, password, role, created_at, updated_at) 
-      VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())`,
+      VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+         RETURNING id, username, full_name as nombre, email, role as rol, created_at as fecha_creacion`,
       [userId, nombreUsuario, nombre, email, passwordHash, rol] 
     );
     
@@ -233,6 +234,19 @@ export const registrarUsuario = async (datosUsuario) => {
       JWT_SECRETO,
       { expiresIn: '7d' }
     );
+
+    return { 
+      exito: true, 
+      usuario: {
+        id: nuevoUsuario.id,
+        nombre: nuevoUsuario.nombre,
+        email: nuevoUsuario.email,
+        nombre_usuario: nuevoUsuario.username,
+        rol: nuevoUsuario.rol,
+        fecha_creacion: nuevoUsuario.fecha_creacion
+      },
+      token: token
+    };
     
     console.log("✅ Registro exitoso para:", email);
     console.log("🔑 Token generado (primeros 20):", token.substring(0, 20) + '...');
