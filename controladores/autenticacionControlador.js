@@ -135,6 +135,11 @@ export const iniciarSesion = async (identificador, contrasena) => {
 
 // Registro manual - VERSIÓN CORREGIDA CON LA ESTRUCTURA REAL
 export const registrarUsuario = async (datosUsuario) => {
+  console.log("🔍 [BACKEND] Datos recibidos COMPLETOS:", JSON.stringify(datosUsuario, null, 2));
+  const { nombre, email, contrasena, nombreUsuario, rol } = datosUsuario;
+  console.log("🔍 [BACKEND] rol desestructurado:", rol);
+  console.log("🔍 [BACKEND] tipo de rol:", typeof rol);
+  
   let client;
   
   try {

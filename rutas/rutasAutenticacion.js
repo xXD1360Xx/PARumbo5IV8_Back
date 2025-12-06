@@ -91,7 +91,8 @@ router.post('/registro', async (req, res) => {
       nombre,
       email,
       contrasena,
-      nombreUsuario
+      nombreUsuario,
+      rol
     });
     
     if (resultado.exito) {
