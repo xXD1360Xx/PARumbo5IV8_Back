@@ -5,6 +5,7 @@ import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 
 // Login normal (usuario/contraseña)
+// Login normal (usuario/contraseña)
 export const iniciarSesion = async (identificador, contrasena) => {
   let client;
   
@@ -28,16 +29,16 @@ export const iniciarSesion = async (identificador, contrasena) => {
     client = await pool.connect();
     console.log("✅ Conexión a DB establecida");
     
-    // CORREGIDO: Usar _users con columnas correctas
+    // CONSULTA CORREGIDA - USAR LOS NOMBRES REALES DE LAS COLUMNAS
     const query = `
-      SELECT id, full_name as nombre, email, username as nombre_usuario, 
-             role as rol, password as contrasena_hash, 
-             created_at as fecha_creacion, avatar_url as foto_perfil 
+      SELECT id, full_name, email, username, role, password, 
+             created_at, avatar_url, banner_url, bio
       FROM _users 
       WHERE email = $1 OR username = $1
     `;
     
-    const result = await client.query(query, [identificador]);
+    console.log("🔍 Ejecutando query para:", identificador);
+    const result = await client.query(query, [identificador.trim()]);
     
     if (result.rows.length === 0) {
       console.log("❌ Usuario no encontrado:", identificador);
@@ -50,8 +51,77 @@ export const iniciarSesion = async (identificador, contrasena) => {
     
     const usuario = result.rows[0];
     console.log("✅ Usuario encontrado ID:", usuario.id);
+    console.log("📊 Datos del usuario:", {
+      email: usuario.email,
+      username: usuario.username,
+      passwordLength: usuario.password ? usuario.password.length : 0,
+      passwordType: typeof usuario.password,
+      passwordPreview: usuario.password ? usuario.password.substring(0, 30) + '...' : 'null'
+    });
     
-    const contrasenaValida = await bcrypt.compare(contrasena, usuario.contrasena_hash);
+    // VALIDAR QUE TENEMOS UN HASH VÁLIDO
+    if (!usuario.password) {
+      console.error("❌ ERROR: Campo 'password' está vacío o null en BD");
+      return { 
+        exito: false, 
+        error: 'Error en datos del usuario',
+        codigo: 'DATOS_USUARIO_INVALIDOS'
+      };
+    }
+    
+    if (typeof usuario.password !== 'string') {
+      console.error("❌ ERROR: 'password' no es un string, es:", typeof usuario.password);
+      return { 
+        exito: false, 
+        error: 'Error en datos del usuario',
+        codigo: 'DATOS_USUARIO_INVALIDOS'
+      };
+    }
+    
+    // VERIFICAR FORMATO DEL HASH
+    // Un hash bcrypt válido debe comenzar con $2a$, $2b$, $2x$, $2y$ y tener ~60 caracteres
+    const hash = usuario.password.trim();
+    if (hash.length < 50 || !hash.startsWith('$2')) {
+      console.error("❌ ERROR: Hash no parece ser un hash bcrypt válido");
+      console.error("❌ Hash encontrado:", hash);
+      return { 
+        exito: false, 
+        error: 'Error en datos del usuario',
+        codigo: 'HASH_INVALIDO'
+      };
+    }
+    
+    console.log("🔑 Comparando contraseña...");
+    console.log("🔍 Contraseña recibida:", contrasena);
+    console.log("🔍 Hash de BD (primeros 30):", hash.substring(0, 30) + '...');
+    
+    // COMPARAR CONTRASEÑAS CON MANEJO DE ERRORES
+    let contrasenaValida;
+    try {
+      contrasenaValida = await bcrypt.compare(contrasena, hash);
+    } catch (bcryptError) {
+      console.error("❌ Error en bcrypt.compare:", bcryptError.message);
+      console.error("🔧 Stack bcrypt:", bcryptError.stack);
+      
+      // Si el hash está corrupto, podemos intentar un reset
+      if (bcryptError.message.includes('Illegal arguments')) {
+        console.log("⚠️ Hash corrupto en BD. Intentando verificar longitud...");
+        console.log("📏 Longitud del hash:", hash.length);
+        console.log("🔍 Hash completo:", hash);
+        
+        // Intentar verificar si es un hash bcrypt válido
+        const isBcryptHash = hash.match(/^\$2[ayb]\$.{56}$/);
+        console.log("🔍 ¿Es hash bcrypt válido?", isBcryptHash ? "Sí" : "No");
+        
+        return { 
+          exito: false, 
+          error: 'Error en datos de autenticación',
+          codigo: 'HASH_CORRUPTO'
+        };
+      }
+      
+      throw bcryptError;
+    }
     
     if (!contrasenaValida) {
       console.log("❌ Contraseña incorrecta para:", identificador);
@@ -62,8 +132,20 @@ export const iniciarSesion = async (identificador, contrasena) => {
       };
     }
     
-    // Remover contraseña del objeto usuario
-    const { contrasena_hash, ...usuarioSinPassword } = usuario;
+    console.log("✅ Contraseña válida");
+    
+    // Preparar datos del usuario para respuesta
+    const usuarioRespuesta = {
+      id: usuario.id,
+      nombre: usuario.full_name,
+      email: usuario.email,
+      nombre_usuario: usuario.username,
+      rol: usuario.role || 'user',
+      foto_perfil: usuario.avatar_url,
+      banner_url: usuario.banner_url,
+      bio: usuario.bio,
+      fecha_creacion: usuario.created_at
+    };
     
     // Generar token
     const JWT_SECRETO = process.env.JWT_SECRETO;
@@ -80,8 +162,8 @@ export const iniciarSesion = async (identificador, contrasena) => {
       { 
         id: usuario.id, 
         email: usuario.email,
-        nombre: usuario.nombre,
-        rol: usuario.rol || 'user'
+        nombre: usuario.full_name,
+        rol: usuario.role || 'user'
       },
       JWT_SECRETO,
       { expiresIn: '7d' }
@@ -92,7 +174,7 @@ export const iniciarSesion = async (identificador, contrasena) => {
     
     return { 
       exito: true, 
-      usuario: usuarioSinPassword,
+      usuario: usuarioRespuesta,
       token: token
     };
     
@@ -121,7 +203,7 @@ export const iniciarSesion = async (identificador, contrasena) => {
     
     return { 
       exito: false, 
-      error: 'Error del servidor al iniciar sesión',
+      error: 'Error del servidor al iniciar sesión: ' + error.message,
       codigo: 'ERROR_SERVIDOR'
     };
   } finally {
