@@ -176,28 +176,120 @@ export const obtenerEstadisticasUsuario = async (usuarioId) => {
 /**
  * Actualizar perfil del usuario (nombre y biografía)
  */
+/**
+ * Actualizar perfil completo del usuario
+ * Permite actualizar: nombre, nombre de usuario, biografía, correo, contraseña
+ */
 export const actualizarPerfilUsuario = async (usuarioId, datosActualizacion) => {
   try {
     console.log('✏️ [CONTROLADOR] Actualizando perfil para usuario ID:', usuarioId);
     console.log('📝 Datos de actualización:', datosActualizacion);
     
     const { 
-      nombre, 
-      biografia, 
-      nombreCompleto,
-      bio
+      nombre,           // Nombre completo
+      nombre_usuario,   // Nombre de usuario (username)
+      email,            // Correo electrónico
+      contrasena,       // Contraseña (si se quiere cambiar)
+      biografia,        // Biografía
+      nombreCompleto,   // Alias para nombre
+      bio,              // Alias para biografía
+      username,         // Alias para nombre_usuario
+      password          // Alias para contraseña
     } = datosActualizacion;
     
+    // Usar nombres alternativos si los principales no están
     const nombreFinal = nombre || nombreCompleto;
+    const nombreUsuarioFinal = nombre_usuario || username;
     const biografiaFinal = biografia || bio;
+    const contrasenaFinal = contrasena || password;
     
+    // Verificar si el nuevo nombre de usuario ya existe (si se está cambiando)
+    if (nombreUsuarioFinal) {
+      const verificarUsuarioQuery = `
+        SELECT id FROM _users 
+        WHERE username = $1 AND id != $2
+      `;
+      const usuarioExistente = await pool.query(verificarUsuarioQuery, [nombreUsuarioFinal, usuarioId]);
+      
+      if (usuarioExistente.rows.length > 0) {
+        throw new Error('El nombre de usuario ya está en uso');
+      }
+    }
+    
+    // Verificar si el nuevo correo ya existe (si se está cambiando)
+    if (email) {
+      const verificarEmailQuery = `
+        SELECT id FROM _users 
+        WHERE email = $1 AND id != $2
+      `;
+      const emailExistente = await pool.query(verificarEmailQuery, [email, usuarioId]);
+      
+      if (emailExistente.rows.length > 0) {
+        throw new Error('El correo electrónico ya está en uso');
+      }
+    }
+    
+    // Preparar los valores para la actualización
+    const valoresActualizacion = [];
+    const partesQuery = [];
+    let contador = 1;
+    
+    // Nombre completo
+    if (nombreFinal !== undefined) {
+      partesQuery.push(`full_name = $${contador}`);
+      valoresActualizacion.push(nombreFinal);
+      contador++;
+    }
+    
+    // Nombre de usuario
+    if (nombreUsuarioFinal !== undefined) {
+      partesQuery.push(`username = $${contador}`);
+      valoresActualizacion.push(nombreUsuarioFinal);
+      contador++;
+    }
+    
+    // Correo electrónico
+    if (email !== undefined) {
+      partesQuery.push(`email = $${contador}`);
+      valoresActualizacion.push(email);
+      contador++;
+    }
+    
+    // Contraseña (si se proporciona)
+    if (contrasenaFinal !== undefined) {
+      // Encriptar la contraseña antes de guardarla
+      const bcrypt = require('bcrypt');
+      const saltRounds = 10;
+      const contrasenaEncriptada = await bcrypt.hash(contrasenaFinal, saltRounds);
+      
+      partesQuery.push(`password = $${contador}`);
+      valoresActualizacion.push(contrasenaEncriptada);
+      contador++;
+    }
+    
+    // Biografía
+    if (biografiaFinal !== undefined) {
+      partesQuery.push(`bio = $${contador}`);
+      valoresActualizacion.push(biografiaFinal);
+      contador++;
+    }
+    
+    // Siempre actualizar la fecha de modificación
+    partesQuery.push(`updated_at = NOW()`);
+    
+    // Si no hay nada que actualizar, retornar error
+    if (partesQuery.length === 1) { // Solo updated_at
+      throw new Error('No se proporcionaron datos para actualizar');
+    }
+    
+    // Agregar el ID del usuario al final
+    valoresActualizacion.push(usuarioId);
+    
+    // Construir la query dinámica
     const query = `
       UPDATE _users 
-      SET 
-        full_name = COALESCE($1, full_name),
-        bio = COALESCE($2, bio),
-        updated_at = NOW()
-      WHERE id = $3
+      SET ${partesQuery.join(', ')}
+      WHERE id = $${contador}
       RETURNING 
         id, 
         username as nombre_usuario,
@@ -211,11 +303,7 @@ export const actualizarPerfilUsuario = async (usuarioId, datosActualizacion) => 
         updated_at
     `;
     
-    const result = await pool.query(query, [
-      nombreFinal, 
-      biografiaFinal, 
-      usuarioId
-    ]);
+    const result = await pool.query(query, valoresActualizacion);
     
     if (result.rows.length === 0) {
       throw new Error('Usuario no encontrado');
