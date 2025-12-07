@@ -319,6 +319,83 @@ export const actualizarPerfilUsuario = async (usuarioId, datosActualizacion) => 
   }
 };
 
+/**
+ * Cambiar contraseña del usuario
+ */
+export const cambiarContrasenaUsuario = async (usuarioId, datos) => {
+  try {
+    console.log('🔐 [CONTROLADOR] Cambiando contraseña para usuario ID:', usuarioId);
+    
+    const { 
+      contrasena_actual, 
+      nueva_contrasena,
+      confirmar_contrasena 
+    } = datos;
+    
+    // Validaciones
+    if (!contrasena_actual || !nueva_contrasena) {
+      throw new Error('Se requieren la contraseña actual y la nueva');
+    }
+    
+    if (nueva_contrasena !== confirmar_contrasena) {
+      throw new Error('Las contraseñas nuevas no coinciden');
+    }
+    
+    if (nueva_contrasena.length < 6) {
+      throw new Error('La nueva contraseña debe tener al menos 6 caracteres');
+    }
+    
+    // 1. Verificar contraseña actual
+    const usuarioQuery = `
+      SELECT password FROM _users WHERE id = $1
+    `;
+    const usuarioResult = await pool.query(usuarioQuery, [usuarioId]);
+    
+    if (usuarioResult.rows.length === 0) {
+      throw new Error('Usuario no encontrado');
+    }
+    
+    const contrasenaActualHash = usuarioResult.rows[0].password;
+    
+    // Comparar contraseña actual
+    const bcrypt = require('bcrypt');
+    const contrasenaValida = await bcrypt.compare(contrasena_actual, contrasenaActualHash);
+    
+    if (!contrasenaValida) {
+      throw new Error('La contraseña actual es incorrecta');
+    }
+    
+    // 2. Encriptar nueva contraseña
+    const saltRounds = 10;
+    const nuevaContrasenaHash = await bcrypt.hash(nueva_contrasena, saltRounds);
+    
+    // 3. Actualizar contraseña
+    const updateQuery = `
+      UPDATE _users 
+      SET password = $1, updated_at = NOW()
+      WHERE id = $2
+      RETURNING id, username, email
+    `;
+    
+    const result = await pool.query(updateQuery, [nuevaContrasenaHash, usuarioId]);
+    
+    if (result.rows.length === 0) {
+      throw new Error('Error al actualizar la contraseña');
+    }
+    
+    console.log('✅ Contraseña cambiada para usuario ID:', usuarioId);
+    
+    return {
+      exito: true,
+      mensaje: 'Contraseña actualizada exitosamente'
+    };
+    
+  } catch (error) {
+    console.error('❌ Error en cambiarContrasenaUsuario:', error);
+    throw error;
+  }
+};
+
 // ==================== FUNCIONES PARA FOTOS ====================
 
 /**
