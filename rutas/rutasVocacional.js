@@ -3,62 +3,50 @@ import { autenticarUsuario } from '../middleware/autenticacionMiddleware.js';
 import { 
   obtenerResultadosVocacionales,
   obtenerUltimoResultadoVocacional,
-  obtenerEstadisticasVocacionales,
-  guardarResultadoVocacional,
-  eliminarResultadoVocacional
+  obtenerEstadisticasVocacionales
 } from '../controladores/vocacionalControlador.js';
 
 const router = express.Router();
 
-// GET /api/vocacional/historial/:usuarioId - Obtener historial de resultados vocacionales
-router.get('/historial/:usuarioId', autenticarUsuario, async (req, res) => {
-  try {
-    const { usuarioId } = req.params;
-    
-    // Validar que el usuarioId sea un UUID válido
-    if (!usuarioId || usuarioId.length < 10) {
-      return res.status(400).json({
-        exito: false,
-        error: 'ID de usuario inválido'
-      });
-    }
+// ==================== RESULTADOS VOCACIONALES (SOLO LECTURA) ====================
 
-    // Usar la función del controlador
+// GET /api/vocacional/resultados - Obtener resultados del usuario autenticado
+router.get('/resultados', autenticarUsuario, async (req, res) => {
+  try {
+    const usuarioId = req.usuario.id;
+    console.log('🎓 GET /vocacional/resultados - Usuario ID:', usuarioId);
+    
     const resultados = await obtenerResultadosVocacionales(usuarioId);
     
     res.json({ 
       exito: true, 
       datos: resultados,
-      mensaje: 'Historial vocacional obtenido exitosamente',
+      mensaje: 'Resultados vocacionales obtenidos exitosamente',
       total: resultados.length
     });
   } catch (error) {
-    console.error('Error al obtener historial vocacional:', error);
+    console.error('❌ Error en GET /vocacional/resultados:', error);
     res.status(500).json({ 
       exito: false, 
-      error: 'Error al obtener el historial de resultados vocacionales' 
+      error: 'Error al obtener resultados vocacionales',
+      datos: []
     });
   }
 });
 
-// GET /api/vocacional/ultimo/:usuarioId - Obtener el último resultado vocacional
-router.get('/ultimo/:usuarioId', autenticarUsuario, async (req, res) => {
+// GET /api/vocacional/ultimo - Obtener el último resultado vocacional del usuario
+router.get('/ultimo', autenticarUsuario, async (req, res) => {
   try {
-    const { usuarioId } = req.params;
+    const usuarioId = req.usuario.id;
+    console.log('🎓 GET /vocacional/ultimo - Usuario ID:', usuarioId);
     
-    if (!usuarioId || usuarioId.length < 10) {
-      return res.status(400).json({
-        exito: false,
-        error: 'ID de usuario inválido'
-      });
-    }
-
     const ultimoResultado = await obtenerUltimoResultadoVocacional(usuarioId);
     
     if (!ultimoResultado) {
       return res.status(404).json({
         exito: false,
-        error: 'No se encontraron resultados vocacionales para este usuario'
+        error: 'No se encontraron resultados vocacionales',
+        datos: null
       });
     }
     
@@ -68,26 +56,21 @@ router.get('/ultimo/:usuarioId', autenticarUsuario, async (req, res) => {
       mensaje: 'Último resultado vocacional obtenido exitosamente'
     });
   } catch (error) {
-    console.error('Error al obtener último resultado vocacional:', error);
+    console.error('❌ Error en GET /vocacional/ultimo:', error);
     res.status(500).json({ 
       exito: false, 
-      error: 'Error al obtener el último resultado vocacional' 
+      error: 'Error al obtener el último resultado vocacional',
+      datos: null
     });
   }
 });
 
-// GET /api/vocacional/estadisticas/:usuarioId - Obtener estadísticas vocacionales
-router.get('/estadisticas/:usuarioId', autenticarUsuario, async (req, res) => {
+// GET /api/vocacional/estadisticas - Obtener estadísticas vocacionales del usuario
+router.get('/estadisticas', autenticarUsuario, async (req, res) => {
   try {
-    const { usuarioId } = req.params;
+    const usuarioId = req.usuario.id;
+    console.log('📈 GET /vocacional/estadisticas - Usuario ID:', usuarioId);
     
-    if (!usuarioId || usuarioId.length < 10) {
-      return res.status(400).json({
-        exito: false,
-        error: 'ID de usuario inválido'
-      });
-    }
-
     const estadisticas = await obtenerEstadisticasVocacionales(usuarioId);
     
     res.json({ 
@@ -96,82 +79,29 @@ router.get('/estadisticas/:usuarioId', autenticarUsuario, async (req, res) => {
       mensaje: 'Estadísticas vocacionales obtenidas exitosamente'
     });
   } catch (error) {
-    console.error('Error al obtener estadísticas vocacionales:', error);
+    console.error('❌ Error en GET /vocacional/estadisticas:', error);
     res.status(500).json({ 
       exito: false, 
-      error: 'Error al obtener estadísticas vocacionales' 
+      error: 'Error al obtener estadísticas vocacionales',
+      datos: {
+        total_resultados: 0,
+        promedio_general: "0.00",
+        distribucion_zonas: []
+      }
     });
   }
 });
 
-// POST /api/vocacional/guardar - Guardar nuevo resultado vocacional
-router.post('/guardar', autenticarUsuario, async (req, res) => {
-  try {
-    const { usuarioId, respuestas, carreras, promedio_general, zona_ikigai } = req.body;
-    
-    // Validaciones
-    if (!usuarioId || !respuestas || !carreras || !zona_ikigai) {
-      return res.status(400).json({
-        exito: false,
-        error: 'Datos incompletos para guardar el resultado'
-      });
-    }
-    
-    const resultadoData = {
-      respuestas,
-      carreras,
-      promedio_general: promedio_general || 0,
-      zona_ikigai
-    };
-    
-    const resultadoGuardado = await guardarResultadoVocacional(usuarioId, resultadoData);
-    
-    res.json({ 
-      exito: true, 
-      datos: resultadoGuardado,
-      mensaje: 'Resultado vocacional guardado exitosamente'
-    });
-  } catch (error) {
-    console.error('Error al guardar resultado vocacional:', error);
-    res.status(500).json({ 
-      exito: false, 
-      error: 'Error al guardar el resultado vocacional' 
-    });
-  }
-});
+// ==================== ENDPOINT DE PRUEBA ====================
 
-// DELETE /api/vocacional/eliminar/:id/:usuarioId - Eliminar resultado vocacional
-router.delete('/eliminar/:id/:usuarioId', autenticarUsuario, async (req, res) => {
-  try {
-    const { id, usuarioId } = req.params;
-    
-    if (!id || !usuarioId) {
-      return res.status(400).json({
-        exito: false,
-        error: 'ID de resultado o usuario inválido'
-      });
-    }
-    
-    const eliminado = await eliminarResultadoVocacional(id, usuarioId);
-    
-    if (!eliminado) {
-      return res.status(404).json({
-        exito: false,
-        error: 'Resultado no encontrado o no tienes permisos para eliminarlo'
-      });
-    }
-    
-    res.json({ 
-      exito: true,
-      mensaje: 'Resultado vocacional eliminado exitosamente'
-    });
-  } catch (error) {
-    console.error('Error al eliminar resultado vocacional:', error);
-    res.status(500).json({ 
-      exito: false, 
-      error: 'Error al eliminar el resultado vocacional' 
-    });
-  }
+// GET /api/vocacional/ping - Endpoint de prueba
+router.get('/ping', autenticarUsuario, (req, res) => {
+  res.json({ 
+    exito: true, 
+    mensaje: 'Servicio vocacional funcionando',
+    usuario: req.usuario.email,
+    timestamp: new Date().toISOString()
+  });
 });
 
 export default router;

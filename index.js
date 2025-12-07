@@ -4,10 +4,15 @@ dotenv.config();
 import express from 'express';
 import cors from 'cors';
 import { verificarConexionDB } from './configuracion/basedeDatos.js';
+
+// Importar todas las rutas
 import rutasAutenticacion from './rutas/rutasAutenticacion.js';
+import rutasUsuario from './rutas/rutasUsuario.js';          // Nueva
+import rutasTest from './rutas/rutasTest.js';                // Nueva
+import rutasVocacional from './rutas/rutasVocacional.js';    // Nueva
 
 const app = express();
-const PORT = process.env.PORT || 3000; // ← CAMBIADO A 3000
+const PORT = process.env.PORT || 3000;
 
 // ============ DEBUG INICIAL ============
 console.log('='.repeat(60));
@@ -22,19 +27,27 @@ console.log(`🗄️  JWT: ${process.env.JWT_SECRETO ? 'CONFIGURADO' : 'NO CONFI
 app.use(cors({
   origin: '*',
   credentials: true,
-  optionsSuccessStatus: 200
+  optionsSuccessStatus: 200,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
 }));
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // === 2. LOGGING MEJORADO ===
 app.use((req, res, next) => {
   const timestamp = new Date().toISOString().split('T')[1].split('.')[0];
   console.log(`[${timestamp}] ${req.method} ${req.originalUrl}`);
-  if (Object.keys(req.body).length > 0 && req.method !== 'GET') {
-    console.log('   Body:', JSON.stringify(req.body).substring(0, 200) + '...');
+  
+  // Solo log body en desarrollo y si no es muy grande
+  if (process.env.ENTORNO !== 'produccion' && 
+      Object.keys(req.body).length > 0 && 
+      req.method !== 'GET') {
+    const bodyStr = JSON.stringify(req.body);
+    console.log('   Body:', bodyStr.substring(0, 200) + (bodyStr.length > 200 ? '...' : ''));
   }
+  
   next();
 });
 
@@ -47,12 +60,17 @@ app.get('/test', (req, res) => {
     success: true, 
     message: 'API Rumbo funcionando correctamente',
     timestamp: new Date().toISOString(),
-    port: PORT,
-    environment: process.env.ENTORNO || 'desarrollo'
+    version: '1.0.0',
+    services: {
+      auth: true,
+      usuario: true,
+      tests: true,
+      vocacional: true
+    }
   });
 });
 
-// Health check simple (sin DB para debug rápido)
+// Health check simple
 app.get('/health', (req, res) => {
   console.log('🩺 /health accedido');
   res.json({ 
@@ -69,7 +87,7 @@ app.get('/health', (req, res) => {
 app.get('/health-full', async (req, res) => {
   console.log('🏥 /health-full accedido');
   try {
-    const dbStatus = await verificarConexionDB(1);
+    const dbStatus = await verificarConexionDB(3);
     
     const healthStatus = {
       status: dbStatus.connected ? "healthy" : "unhealthy",
@@ -81,8 +99,8 @@ app.get('/health-full', async (req, res) => {
       memory: process.memoryUsage(),
       services: {
         sendgrid: process.env.SENDGRID_API_KEY ? "configured" : "not_configured",
-        cloudinary: process.env.CLOUDINARY_CLOUD_NAME ? "configured" : "not_configured",
-        jwt: process.env.JWT_SECRETO ? "configured" : "not_configured"
+        jwt: process.env.JWT_SECRETO ? "configured" : "not_configured",
+        routes_loaded: true
       }
     };
     
@@ -97,7 +115,42 @@ app.get('/health-full', async (req, res) => {
   }
 });
 
-// Ruta de debug general
+// === 4. MONTAR TODAS LAS RUTAS ===
+console.log('\n🔧 Montando rutas de la API...');
+
+// Autenticación
+try {
+  app.use('/api/auth', rutasAutenticacion);
+  console.log('✅ Rutas montadas en /api/auth');
+} catch (error) {
+  console.error('❌ ERROR montando rutas de autenticación:', error.message);
+}
+
+// Usuario
+try {
+  app.use('/api/usuario', rutasUsuario);
+  console.log('✅ Rutas montadas en /api/usuario');
+} catch (error) {
+  console.error('❌ ERROR montando rutas de usuario:', error.message);
+}
+
+// Tests
+try {
+  app.use('/api/tests', rutasTest);
+  console.log('✅ Rutas montadas en /api/tests');
+} catch (error) {
+  console.error('❌ ERROR montando rutas de tests:', error.message);
+}
+
+// Vocacional
+try {
+  app.use('/api/vocacional', rutasVocacional);
+  console.log('✅ Rutas montadas en /api/vocacional');
+} catch (error) {
+  console.error('❌ ERROR montando rutas vocacional:', error.message);
+}
+
+// === 5. RUTA DE DEBUG CON TODAS LAS RUTAS ===
 app.get('/debug', (req, res) => {
   console.log('🔍 /debug accedida');
   res.json({
@@ -108,75 +161,124 @@ app.get('/debug', (req, res) => {
       node_version: process.version,
       platform: process.platform,
       port: PORT,
-      environment: process.env.ENTORNO || 'desarrollo'
+      environment: process.env.ENTORNO || 'desarrollo',
+      uptime: process.uptime()
     },
     environment_variables: {
-      sendgrid_key: process.env.SENDGRID_API_KEY ? '***' + process.env.SENDGRID_API_KEY.slice(-8) : null,
       entorno: process.env.ENTORNO,
       node_env: process.env.NODE_ENV,
       port: process.env.PORT
     },
-    routes_available: [
-      'GET  /test',
-      'GET  /health',
-      'GET  /health-full',
-      'GET  /debug',
-      'GET  /api/auth/ping',
-      'GET  /api/auth/status',
-      'GET  /api/auth/debug-env',
-      'POST /api/auth/login',
-      'POST /api/auth/registro',
-      'POST /api/auth/enviarCorreo',
-      'POST /api/auth/google'
-    ]
+    routes_available: {
+      // Rutas de sistema
+      system: [
+        'GET  /test',
+        'GET  /health',
+        'GET  /health-full',
+        'GET  /debug'
+      ],
+      
+      // Rutas de autenticación
+      auth: [
+        'POST /api/auth/login',
+        'POST /api/auth/registro',
+        'POST /api/auth/enviarCorreo',
+        'POST /api/auth/google',
+        'POST /api/auth/logout',
+        'GET  /api/auth/verificar',
+        'GET  /api/auth/status',
+        'POST /api/auth/cambiar-contrasena'
+      ],
+      
+      // Rutas de usuario
+      usuario: [
+        'GET  /api/usuario/perfil',
+        'GET  /api/usuario/perfil/:id',
+        'PUT  /api/usuario/perfil',
+        'GET  /api/usuario/estadisticas',
+        'GET  /api/usuario/dashboard',
+        'GET  /api/usuario/buscar',
+        'GET  /api/usuario/verificar/:id',
+        'GET  /api/usuario/configuracion',
+        'PUT  /api/usuario/configuracion'
+      ],
+      
+      // Rutas de tests
+      tests: [
+        'GET  /api/tests/',
+        'GET  /api/tests/mis-resultados',
+        'GET  /api/tests/estadisticas/generales',
+        'GET  /api/tests/:testId',
+        'GET  /api/tests/vocacionales'
+      ],
+      
+      // Rutas vocacionales
+      vocacional: [
+        'GET  /api/vocacional/resultados',
+        'GET  /api/vocacional/ultimo',
+        'GET  /api/vocacional/estadisticas',
+        'GET  /api/vocacional/analisis/:id',
+        'GET  /api/vocacional/ping'
+      ]
+    }
   });
 });
 
-// === 4. MONTAR RUTAS DE AUTENTICACIÓN ===
-console.log('\n🔧 Montando rutas de autenticación...');
-try {
-  app.use('/api/auth', rutasAutenticacion);
-  console.log('✅ Rutas montadas en /api/auth');
-} catch (error) {
-  console.error('❌ ERROR montando rutas de autenticación:', error.message);
-  console.error('Stack trace:', error.stack);
-}
-
-// === 5. MIDDLEWARE 404 (AL FINAL) ===
+// === 6. MIDDLEWARE 404 (AL FINAL) ===
 app.use('*', (req, res) => {
   console.log(`❌ 404 - Ruta no encontrada: ${req.method} ${req.originalUrl}`);
+  
   res.status(404).json({
     success: false,
     error: 'Ruta no encontrada',
     path: req.originalUrl,
     method: req.method,
     timestamp: new Date().toISOString(),
-    available_routes: [
+    suggestion: 'Verifica la URL o consulta /debug para ver rutas disponibles',
+    available_endpoints: [
       '/test',
       '/health', 
       '/health-full',
       '/debug',
-      '/api/auth/ping',
-      '/api/auth/status',
-      '/api/auth/debug-env'
+      '/api/auth/*',
+      '/api/usuario/*',
+      '/api/tests/*',
+      '/api/vocacional/*'
     ]
   });
 });
 
-// === 6. MANEJADOR DE ERRORES GLOBAL ===
+// === 7. MANEJADOR DE ERRORES GLOBAL ===
 app.use((err, req, res, next) => {
   console.error('🔥 ERROR GLOBAL:', err.message);
   console.error('Stack:', err.stack);
   
-  res.status(500).json({
+  // Determinar código de estado
+  let statusCode = 500;
+  let errorMessage = 'Error interno del servidor';
+  
+  if (err.name === 'ValidationError') {
+    statusCode = 400;
+    errorMessage = 'Error de validación';
+  } else if (err.name === 'UnauthorizedError') {
+    statusCode = 401;
+    errorMessage = 'No autorizado';
+  } else if (err.code === '23505') { // PostgreSQL duplicate key
+    statusCode = 409;
+    errorMessage = 'Registro duplicado';
+  }
+  
+  res.status(statusCode).json({
     success: false,
-    error: 'Error interno del servidor',
+    error: errorMessage,
     message: process.env.ENTORNO === 'desarrollo' ? err.message : undefined,
-    timestamp: new Date().toISOString()
+    code: err.code,
+    timestamp: new Date().toISOString(),
+    path: req.originalUrl
   });
 });
 
-// === 7. INICIAR SERVIDOR ===
+// === 8. INICIAR SERVIDOR ===
 const iniciarServidor = async () => {
   try {
     console.log('\n🔗 Verificando conexión a base de datos...');
@@ -197,18 +299,32 @@ const iniciarServidor = async () => {
       console.log(`📍 Puerto: ${PORT}`);
       console.log(`🌍 Entorno: ${process.env.ENTORNO || 'desarrollo'}`);
       console.log(`🗄️  Base de datos: ${dbStatus.connected ? '✅ Conectada' : '❌ Desconectada'}`);
-      console.log(`📧 SendGrid: ${process.env.SENDGRID_API_KEY ? '✅ Configurado' : '❌ No configurado'}`);
+      console.log(`🔐 JWT: ${process.env.JWT_SECRETO ? '✅ Configurado' : '❌ No configurado'}`);
+      
+      console.log('\n📡 ENDPOINTS DISPONIBLES:');
+      console.log('   🔐 Autenticación:');
+      console.log('      POST /api/auth/login         - Iniciar sesión');
+      console.log('      POST /api/auth/registro      - Registrar usuario');
+      console.log('      POST /api/auth/enviarCorreo  - Enviar código');
+      
+      console.log('\n   👤 Usuario:');
+      console.log('      GET  /api/usuario/perfil     - Perfil del usuario');
+      console.log('      GET  /api/usuario/estadisticas - Estadísticas');
+      console.log('      GET  /api/usuario/dashboard  - Dashboard');
+      
+      console.log('\n   📊 Tests:');
+      console.log('      GET  /api/tests/             - Tests disponibles');
+      console.log('      GET  /api/tests/mis-resultados - Mis resultados');
+      
+      console.log('\n   🎓 Vocacional:');
+      console.log('      GET  /api/vocacional/resultados - Resultados vocacionales');
+      console.log('      GET  /api/vocacional/ultimo   - Último resultado');
+      
       console.log('\n🔗 URLs para probar:');
       console.log(`   📍 Local: http://localhost:${PORT}`);
       console.log(`   🩺 Health: http://localhost:${PORT}/health`);
-      console.log(`   🧪 Test: http://localhost:${PORT}/test`);
       console.log(`   🔍 Debug: http://localhost:${PORT}/debug`);
-      console.log(`   🏓 Auth Ping: http://localhost:${PORT}/api/auth/ping`);
-      console.log(`   📡 Auth Status: http://localhost:${PORT}/api/auth/status`);
-      console.log('\n📋 Rutas principales:');
-      console.log(`   POST /api/auth/enviarCorreo   - Enviar código de verificación`);
-      console.log(`   POST /api/auth/login         - Iniciar sesión`);
-      console.log(`   POST /api/auth/registro      - Registrar usuario`);
+      console.log(`   🏓 Test: http://localhost:${PORT}/test`);
       console.log('='.repeat(60));
     });
   } catch (error) {
