@@ -216,31 +216,76 @@ export const iniciarSesion = async (identificador, contrasena) => {
 };
 
 // Registro manual - VERSIÓN CORREGIDA CON LA ESTRUCTURA REAL
+// Registro manual - VERSIÓN CORREGIDA
 export const registrarUsuario = async (datosUsuario) => {
   console.log("🔍 [BACKEND] Datos recibidos COMPLETOS:", JSON.stringify(datosUsuario, null, 2));
+  
+  // SOLO UNA DESESTRUCTURACIÓN
   const { nombre, email, contrasena, nombreUsuario, rol } = datosUsuario;
-  console.log("🔍 [BACKEND] rol desestructurado:", rol);
-  console.log("🔍 [BACKEND] tipo de rol:", typeof rol);
+  
+  console.log("🔍 [BACKEND] Campos desestructurados:", {
+    nombre: nombre?.length || 0,
+    email: email?.length || 0,
+    contrasena: contrasena ? "***" : "null",
+    nombreUsuario: nombreUsuario?.length || 0,
+    rol: rol
+  });
   
   let client;
   
   try {
-    const { nombre, email, contrasena, nombreUsuario, rol } = datosUsuario;
-    console.log("🔍 [CONTROLADOR] Registro manual para:", email);
+    // NOTA: NO VOLVER A DESESTRUCTURAR AQUÍ - usar las variables ya desestructuradas
     
     // Validación de entrada
-    if (!nombre || !email || !contrasena || !nombreUsuario) {
-      console.error("❌ Datos incompletos para registro");
+    if (!nombre || nombre.trim().length === 0) {
+      console.error("❌ Nombre vacío o inválido:", nombre);
       return { 
         exito: false, 
-        error: 'Todos los campos son requeridos',
-        codigo: 'DATOS_INCOMPLETOS'
+        error: 'El nombre es requerido',
+        codigo: 'NOMBRE_REQUERIDO'
+      };
+    }
+    
+    if (!email || email.trim().length === 0) {
+      console.error("❌ Email vacío o inválido:", email);
+      return { 
+        exito: false, 
+        error: 'El email es requerido',
+        codigo: 'EMAIL_REQUERIDO'
+      };
+    }
+    
+    if (!contrasena || contrasena.trim().length === 0) {
+      console.error("❌ Contraseña vacía o inválida");
+      return { 
+        exito: false, 
+        error: 'La contraseña es requerida',
+        codigo: 'CONTRASENA_REQUERIDA'
+      };
+    }
+    
+    if (!nombreUsuario || nombreUsuario.trim().length === 0) {
+      console.error("❌ Nombre de usuario vacío o inválido:", nombreUsuario);
+      return { 
+        exito: false, 
+        error: 'El nombre de usuario es requerido',
+        codigo: 'USERNAME_REQUERIDO'
+      };
+    }
+    
+    if (!rol || rol.trim().length === 0) {
+      console.error("❌ Rol vacío o inválido:", rol);
+      return { 
+        exito: false, 
+        error: 'El rol es requerido',
+        codigo: 'ROL_REQUERIDO'
       };
     }
     
     // Validar email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
+      console.error("❌ Formato de email inválido:", email);
       return { 
         exito: false, 
         error: 'Formato de email inválido',
@@ -250,6 +295,7 @@ export const registrarUsuario = async (datosUsuario) => {
     
     // Validar contraseña
     if (contrasena.length < 6) {
+      console.error("❌ Contraseña demasiado corta:", contrasena.length);
       return { 
         exito: false, 
         error: 'La contraseña debe tener al menos 6 caracteres',
@@ -259,6 +305,7 @@ export const registrarUsuario = async (datosUsuario) => {
     
     // Validar username
     if (nombreUsuario.length < 3) {
+      console.error("❌ Username demasiado corto:", nombreUsuario.length);
       return { 
         exito: false, 
         error: 'El nombre de usuario debe tener al menos 3 caracteres',
@@ -266,43 +313,109 @@ export const registrarUsuario = async (datosUsuario) => {
       };
     }
     
-    // Obtener conexión del pool
-    client = await pool.connect();
+    // Validar rol
+    const rolesPermitidos = ['user', 'student', 'teacher', 'orientator', 'admin'];
+    const rolNormalizado = rol ? rol.toLowerCase().trim() : 'user';
     
-    // Verificar si el usuario ya existe (usando _users con columnas correctas)
-    const usuarioExistente = await client.query(
-      'SELECT id FROM _users WHERE email = $1 OR username = $2',
-      [email, nombreUsuario]
-    );
-    
-    if (usuarioExistente.rows.length > 0) {
-      console.log("❌ Usuario ya existe:", email);
+    if (!rolesPermitidos.includes(rolNormalizado)) {
+      console.error("❌ Rol no permitido:", rol);
+      console.error("✅ Roles permitidos:", rolesPermitidos);
+      console.error("📝 Rol normalizado:", rolNormalizado);
       return { 
         exito: false, 
-        error: 'El usuario ya existe',
-        codigo: 'USUARIO_EXISTENTE'
+        error: `Rol no permitido. Debe ser uno de: ${rolesPermitidos.join(', ')}`,
+        codigo: 'ROL_INVALIDO'
       };
     }
     
+    console.log("✅ Validaciones pasadas. Conectando a DB...");
+    
+    // Obtener conexión del pool
+    client = await pool.connect();
+    console.log("✅ Conexión a DB establecida");
+    
+    // Verificar si el usuario ya existe
+    console.log("🔍 Verificando si usuario ya existe...");
+    const usuarioExistente = await client.query(
+      'SELECT id, email, username FROM _users WHERE email = $1 OR username = $2',
+      [email.trim().toLowerCase(), nombreUsuario.trim()]
+    );
+    
+    if (usuarioExistente.rows.length > 0) {
+      console.log("❌ Usuario ya existe en DB:", {
+        encontrado: usuarioExistente.rows[0],
+        emailBuscado: email,
+        usernameBuscado: nombreUsuario
+      });
+      
+      const usuarioExistenteData = usuarioExistente.rows[0];
+      let mensajeError = 'El usuario ya existe';
+      let codigoError = 'USUARIO_EXISTENTE';
+      
+      if (usuarioExistenteData.email.toLowerCase() === email.toLowerCase()) {
+        mensajeError = 'Ya existe un usuario con este email';
+        codigoError = 'EMAIL_EXISTENTE';
+      } else if (usuarioExistenteData.username.toLowerCase() === nombreUsuario.toLowerCase()) {
+        mensajeError = 'Ya existe un usuario con este nombre de usuario';
+        codigoError = 'USERNAME_EXISTENTE';
+      }
+      
+      return { 
+        exito: false, 
+        error: mensajeError,
+        codigo: codigoError
+      };
+    }
+    
+    console.log("✅ Usuario no existe, procediendo a crear...");
+    
     // Hash de la contraseña
     const saltRounds = 10;
+    console.log("🔑 Generando hash de contraseña...");
     const passwordHash = await bcrypt.hash(contrasena, saltRounds);
+    console.log("✅ Hash generado (primeros 20):", passwordHash.substring(0, 20) + '...');
     
     // Generar ID único (UUID)
     const userId = uuidv4();
+    console.log("📋 UUID generado:", userId);
     
-    // Insertar nuevo usuario en _users (con las columnas correctas)
-    const result = await client.query(
-      `INSERT INTO _users (id, username, full_name, email, password, role, created_at, updated_at) 
+    // INSERT en la tabla _users
+    console.log("📝 Insertando usuario en tabla _users...");
+    const insertQuery = `
+      INSERT INTO _users (
+        id, username, full_name, email, password, role, 
+        created_at, updated_at
+      ) 
       VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
-         RETURNING id, username, full_name as nombre, email, role as rol, created_at as fecha_creacion`,
-      [userId, nombreUsuario, nombre, email, passwordHash, rol] 
-    );
+      RETURNING id, username, full_name, email, role, created_at
+    `;
     
-    // Generar token para el nuevo usuario
+    console.log("🔍 Ejecutando INSERT con datos:", {
+      id: userId,
+      username: nombreUsuario.trim(),
+      full_name: nombre.trim(),
+      email: email.trim().toLowerCase(),
+      password: '[HASH]',
+      role: rolNormalizado
+    });
+    
+    const result = await client.query(insertQuery, [
+      userId,
+      nombreUsuario.trim(),
+      nombre.trim(),
+      email.trim().toLowerCase(),
+      passwordHash,
+      rolNormalizado
+    ]);
+    
+    console.log("✅ INSERT exitoso. Resultado:", result.rows[0]);
+    
+    const nuevoUsuario = result.rows[0];
+    
+    // Generar token JWT
     const JWT_SECRETO = process.env.JWT_SECRETO;
     if (!JWT_SECRETO) {
-      console.error("❌ JWT_SECRETO no configurado");
+      console.error("❌ JWT_SECRETO no configurado en variables de entorno");
       return { 
         exito: false, 
         error: 'Error de configuración del servidor',
@@ -310,43 +423,35 @@ export const registrarUsuario = async (datosUsuario) => {
       };
     }
     
-    const nuevoUsuario = result.rows[0];
+    console.log("🔑 Generando token JWT...");
     const token = jwt.sign(
       { 
         id: nuevoUsuario.id, 
         email: nuevoUsuario.email,
-        nombre: nuevoUsuario.nombre,
-        rol: nuevoUsuario.rol 
+        nombre: nuevoUsuario.full_name,
+        rol: nuevoUsuario.role 
       },
       JWT_SECRETO,
       { expiresIn: '7d' }
     );
-
-    return { 
-      exito: true, 
-      usuario: {
-        id: nuevoUsuario.id,
-        nombre: nuevoUsuario.nombre,
-        email: nuevoUsuario.email,
-        nombre_usuario: nuevoUsuario.username,
-        rol: nuevoUsuario.rol,
-        fecha_creacion: nuevoUsuario.fecha_creacion
-      },
-      token: token
+    
+    console.log("✅ Token generado (primeros 20):", token.substring(0, 20) + '...');
+    
+    // Preparar respuesta
+    const respuestaUsuario = {
+      id: nuevoUsuario.id,
+      nombre: nuevoUsuario.full_name,
+      email: nuevoUsuario.email,
+      nombre_usuario: nuevoUsuario.username,
+      rol: nuevoUsuario.role,
+      fecha_creacion: nuevoUsuario.created_at
     };
     
-    console.log("✅ Registro exitoso para:", email);
-    console.log("🔑 Token generado (primeros 20):", token.substring(0, 20) + '...');
-    console.log("📋 Usuario creado:", {
-      id: nuevoUsuario.id,
-      username: nuevoUsuario.nombre_usuario,
-      email: nuevoUsuario.email,
-      rol: nuevoUsuario.rol
-    });
+    console.log("🎉 Registro exitoso para:", email);
     
     return { 
       exito: true, 
-      usuario: nuevoUsuario,
+      usuario: respuestaUsuario,
       token: token
     };
     
@@ -354,7 +459,18 @@ export const registrarUsuario = async (datosUsuario) => {
     console.error('❌ Error en registrarUsuario:', error.message);
     console.error('🔧 Stack:', error.stack);
     
-    // Error específico de tabla no existe
+    // Manejo específico de errores
+    if (error.message.includes('role') && error.message.includes('does not exist')) {
+      console.error("❌ ERROR: Columna 'role' no existe en tabla _users");
+      console.error("❌ Las columnas de _users deben ser: role (no rol)");
+      return { 
+        exito: false, 
+        error: 'Error de configuración de base de datos: columna incorrecta',
+        codigo: 'COLUMNA_INCORRECTA',
+        detalle: 'Verifica que la tabla _users tiene columna "role"'
+      };
+    }
+    
     if (error.message.includes('_users') && error.message.includes('does not exist')) {
       return { 
         exito: false, 
@@ -363,7 +479,6 @@ export const registrarUsuario = async (datosUsuario) => {
       };
     }
     
-    // Manejo específico de errores de conexión
     if (error.message.includes('ENOTFOUND') || error.message.includes('getaddrinfo')) {
       return { 
         exito: false, 
@@ -372,7 +487,6 @@ export const registrarUsuario = async (datosUsuario) => {
       };
     }
     
-    // Error de duplicado
     if (error.message.includes('duplicate key') || error.code === '23505') {
       return { 
         exito: false, 
@@ -384,12 +498,14 @@ export const registrarUsuario = async (datosUsuario) => {
     return { 
       exito: false, 
       error: 'Error del servidor en registro: ' + error.message,
-      codigo: 'ERROR_SERVIDOR'
+      codigo: 'ERROR_SERVIDOR',
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     };
   } finally {
     // Liberar cliente si existe
     if (client) {
       client.release();
+      console.log("🔗 Conexión a DB liberada");
     }
   }
 };

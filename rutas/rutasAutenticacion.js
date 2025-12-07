@@ -73,18 +73,38 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// POST /api/auth/registro - Registro manual
+// POST /api/auth/registro - Registro manual (CORREGIDO)
 router.post('/registro', async (req, res) => {
   console.log('📝 POST /registro');
+  console.log('   Body recibido:', JSON.stringify(req.body) + '...');
   
-  const { nombre, email, contrasena, nombreUsuario } = req.body;
+  // OBTENER TODOS LOS CAMPOS DEL BODY, INCLUYENDO 'rol'
+  const { nombre, email, contrasena, nombreUsuario, rol } = req.body;
   
-  if (!nombre || !email || !contrasena || !nombreUsuario) {
+  // Validar que 'rol' también esté presente
+  if (!nombre || !email || !contrasena || !nombreUsuario || !rol) {
+    console.error('❌ Campos faltantes en registro:', {
+      nombre: !!nombre,
+      email: !!email,
+      contrasena: !!contrasena,
+      nombreUsuario: !!nombreUsuario,
+      rol: !!rol,
+      bodyCompleto: req.body
+    });
+    
     return res.status(400).json({ 
       exito: false, 
-      error: 'Todos los campos son requeridos' 
+      error: 'Todos los campos son requeridos (nombre, email, contraseña, nombreUsuario, rol)' 
     });
   }
+  
+  console.log('📋 Campos validados correctamente:', {
+    nombre: nombre.substring(0, 20) + '...',
+    email,
+    contrasena: '***' + contrasena.substring(contrasena.length - 2),
+    nombreUsuario,
+    rol
+  });
   
   try {
     const resultado = await registrarUsuario({
@@ -92,10 +112,22 @@ router.post('/registro', async (req, res) => {
       email,
       contrasena,
       nombreUsuario,
-      rol
+      rol  // <-- Ahora SÍ está definida
     });
     
     if (resultado.exito) {
+      console.log('✅ Registro exitoso para:', email);
+      
+      // Configurar cookie con el token
+      const token = resultado.token;
+      res.cookie('token', token, { 
+        httpOnly: true, 
+        secure: process.env.ENTORNO === 'produccion',
+        sameSite: process.env.ENTORNO === 'produccion' ? 'none' : 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+        path: '/'
+      });
+
       return res.status(201).json({
         exito: true,
         usuario: resultado.usuario,
@@ -103,22 +135,32 @@ router.post('/registro', async (req, res) => {
         mensaje: 'Usuario registrado exitosamente'
       });
     } else {
+      console.error('❌ Error en registro:', resultado.error);
+      console.error('🔧 Código error:', resultado.codigo);
+      
       let statusCode = 400;
       if (resultado.codigo === 'DNS_ERROR' || resultado.error?.includes('base de datos')) {
         statusCode = 503;
+      } else if (resultado.codigo === 'USUARIO_EXISTENTE' || 
+                 resultado.codigo === 'EMAIL_EXISTENTE' || 
+                 resultado.codigo === 'USERNAME_EXISTENTE') {
+        statusCode = 409; // Conflict
       }
       
       return res.status(statusCode).json({
         exito: false,
         error: resultado.error,
-        codigo: resultado.codigo
+        codigo: resultado.codigo,
+        detalle: resultado.detalle || undefined
       });
     }
   } catch (error) {
-    console.error('Error en registro:', error.message);
+    console.error('❌ Error en ruta /registro:', error.message);
+    console.error('🔧 Stack:', error.stack);
     return res.status(500).json({ 
       exito: false, 
-      error: 'Error del servidor en registro' 
+      error: 'Error interno del servidor en registro: ' + error.message,
+      codigo: 'ERROR_INTERNO'
     });
   }
 });
