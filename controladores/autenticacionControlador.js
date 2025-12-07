@@ -3,16 +3,15 @@ import { pool } from '../configuracion/basedeDatos.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
 
-// Login normal (usuario/contraseña)
-// Login normal (usuario/contraseña)
+// Login normal (usuario/contraseña) - VERSIÓN SHA256
 export const iniciarSesion = async (identificador, contrasena) => {
   let client;
   
   try {
     console.log("🔍 [CONTROLADOR] Login manual para:", identificador);
     console.log("📊 Entorno:", process.env.ENTORNO || 'desarrollo');
-    console.log("🔑 JWT_SECRETO:", process.env.JWT_SECRETO ? "✓ CONFIGURADO" : "✗ NO CONFIGURADO");
     
     // Validación de entrada
     if (!identificador || !contrasena) {
@@ -29,7 +28,6 @@ export const iniciarSesion = async (identificador, contrasena) => {
     client = await pool.connect();
     console.log("✅ Conexión a DB establecida");
     
-    // CONSULTA CORREGIDA - USAR LOS NOMBRES REALES DE LAS COLUMNAS
     const query = `
       SELECT id, full_name, email, username, role, password, 
              created_at, avatar_url, banner_url, bio
@@ -78,49 +76,76 @@ export const iniciarSesion = async (identificador, contrasena) => {
       };
     }
     
-    // VERIFICAR FORMATO DEL HASH
-    // Un hash bcrypt válido debe comenzar con $2a$, $2b$, $2x$, $2y$ y tener ~60 caracteres
     const hash = usuario.password.trim();
-    if (hash.length < 50 || !hash.startsWith('$2')) {
-      console.error("❌ ERROR: Hash no parece ser un hash bcrypt válido");
-      console.error("❌ Hash encontrado:", hash);
-      return { 
-        exito: false, 
-        error: 'Error en datos del usuario',
-        codigo: 'HASH_INVALIDO'
-      };
-    }
-    
     console.log("🔑 Comparando contraseña...");
     console.log("🔍 Contraseña recibida:", contrasena);
     console.log("🔍 Hash de BD (primeros 30):", hash.substring(0, 30) + '...');
     
-    // COMPARAR CONTRASEÑAS CON MANEJO DE ERRORES
-    let contrasenaValida;
-    try {
-      contrasenaValida = await bcrypt.compare(contrasena, hash);
-    } catch (bcryptError) {
-      console.error("❌ Error en bcrypt.compare:", bcryptError.message);
-      console.error("🔧 Stack bcrypt:", bcryptError.stack);
-      
-      // Si el hash está corrupto, podemos intentar un reset
-      if (bcryptError.message.includes('Illegal arguments')) {
-        console.log("⚠️ Hash corrupto en BD. Intentando verificar longitud...");
-        console.log("📏 Longitud del hash:", hash.length);
-        console.log("🔍 Hash completo:", hash);
+    // DETECTAR TIPO DE HASH
+    const esHashBcrypt = hash && hash.startsWith('$2');
+    const esHashSHA256 = hash && hash.length === 64 && /^[a-f0-9]{64}$/i.test(hash);
+    
+    console.log("🔍 Tipo de hash detectado:", {
+      esHashBcrypt,
+      esHashSHA256,
+      hashLongitud: hash?.length
+    });
+    
+    let contrasenaValida = false;
+    
+    // VERIFICAR CONTRASEÑA SEGÚN TIPO DE HASH
+    if (esHashBcrypt) {
+      console.log("🔑 Verificando con bcrypt...");
+      try {
+        contrasenaValida = await bcrypt.compare(contrasena, hash);
+        console.log("✅ Comparación bcrypt:", contrasenaValida);
         
-        // Intentar verificar si es un hash bcrypt válido
-        const isBcryptHash = hash.match(/^\$2[ayb]\$.{56}$/);
-        console.log("🔍 ¿Es hash bcrypt válido?", isBcryptHash ? "Sí" : "No");
-        
+        // Si es bcrypt pero la web usa SHA256, migrar a SHA256
+        if (contrasenaValida) {
+          console.log("🔄 Migrando bcrypt a SHA256 para compatibilidad con web...");
+          const sha256Hash = crypto
+            .createHash('sha256')
+            .update(contrasena)
+            .digest('hex')
+            .toLowerCase();
+          
+          await client.query(
+            'UPDATE _users SET password = $1 WHERE id = $2',
+            [sha256Hash, usuario.id]
+          );
+          console.log("✅ Hash migrado a SHA256");
+        }
+      } catch (bcryptError) {
+        console.error("❌ Error en bcrypt.compare:", bcryptError.message);
         return { 
           exito: false, 
-          error: 'Error en datos de autenticación',
-          codigo: 'HASH_CORRUPTO'
+          error: 'Error de autenticación',
+          codigo: 'ERROR_AUTENTICACION'
         };
       }
+    } 
+    else if (esHashSHA256) {
+      console.log("🔑 Verificando con SHA256...");
+      // La web usa SHA256, replicar el mismo proceso
+      const hashCalculado = crypto
+        .createHash('sha256')
+        .update(contrasena)
+        .digest('hex')
+        .toLowerCase();
       
-      throw bcryptError;
+      console.log("🔍 Hash calculado SHA256:", hashCalculado);
+      console.log("🔍 Hash en BD:", hash.toLowerCase());
+      
+      contrasenaValida = hashCalculado === hash.toLowerCase();
+      console.log("✅ Comparación SHA256:", contrasenaValida);
+    }
+    else {
+      console.error("❌ Hash desconocido:", hash);
+      return { 
+        exito: false, 
+        error: 'Error en datos de autenticación',
+        codigo: 'HASH_DESCONOCIDO'
+      };
     }
     
     if (!contrasenaValida) {
@@ -215,12 +240,10 @@ export const iniciarSesion = async (identificador, contrasena) => {
   }
 };
 
-// Registro manual - VERSIÓN CORREGIDA CON LA ESTRUCTURA REAL
-// Registro manual - VERSIÓN CORREGIDA
+// Registro manual - AHORA USANDO SHA256 PARA COMPATIBILIDAD CON LA WEB
 export const registrarUsuario = async (datosUsuario) => {
   console.log("🔍 [BACKEND] Datos recibidos COMPLETOS:", JSON.stringify(datosUsuario, null, 2));
   
-  // SOLO UNA DESESTRUCTURACIÓN
   const { nombre, email, contrasena, nombreUsuario, rol } = datosUsuario;
   
   console.log("🔍 [BACKEND] Campos desestructurados:", {
@@ -234,8 +257,6 @@ export const registrarUsuario = async (datosUsuario) => {
   let client;
   
   try {
-    // NOTA: NO VOLVER A DESESTRUCTURAR AQUÍ - usar las variables ya desestructuradas
-    
     // Validación de entrada
     if (!nombre || nombre.trim().length === 0) {
       console.error("❌ Nombre vacío o inválido:", nombre);
@@ -369,11 +390,15 @@ export const registrarUsuario = async (datosUsuario) => {
     
     console.log("✅ Usuario no existe, procediendo a crear...");
     
-    // Hash de la contraseña
-    const saltRounds = 10;
-    console.log("🔑 Generando hash de contraseña...");
-    const passwordHash = await bcrypt.hash(contrasena, saltRounds);
-    console.log("✅ Hash generado (primeros 20):", passwordHash.substring(0, 20) + '...');
+    // 🔥 HASH SHA256 PARA COMPATIBILIDAD CON LA WEB
+    console.log("🔑 Generando hash SHA256 de contraseña...");
+    const passwordHash = crypto
+      .createHash('sha256')
+      .update(contrasena)
+      .digest('hex')
+      .toLowerCase();
+    
+    console.log("✅ Hash SHA256 generado:", passwordHash);
     
     // Generar ID único (UUID)
     const userId = uuidv4();
@@ -395,7 +420,7 @@ export const registrarUsuario = async (datosUsuario) => {
       username: nombreUsuario.trim(),
       full_name: nombre.trim(),
       email: email.trim().toLowerCase(),
-      password: '[HASH]',
+      password: '[HASH SHA256]',
       role: rolNormalizado
     });
     
@@ -532,7 +557,7 @@ export const loginConGoogle = async (accessToken) => {
     const respuesta = await axios.get(
       `https://www.googleapis.com/oauth2/v1/userinfo?alt=json&access_token=${accessToken}`,
       {
-        timeout: 10000,  // 10 segundos máximo
+        timeout: 10000,
         headers: {
           'Authorization': `Bearer ${accessToken}`,
           'Accept': 'application/json'
@@ -543,7 +568,8 @@ export const loginConGoogle = async (accessToken) => {
     console.log("✅ Respuesta de Google recibida:", {
       email: respuesta.data.email,
       name: respuesta.data.name?.substring(0, 20) + '...',
-      id: respuesta.data.id
+      id: respuesta.data.id,
+      picture: respuesta.data.picture ? "SI" : "NO"
     });
 
     // CONEXIÓN A DB
@@ -570,11 +596,12 @@ export const loginConGoogle = async (accessToken) => {
     }
 
     try {
-      // Buscar usuario por email (usando _users)
+      // Buscar usuario por email
       console.log("🔍 Buscando usuario con email:", respuesta.data.email);
       const query = `
         SELECT id, full_name as nombre, email, username as nombre_usuario, 
-               role as rol, avatar_url as foto_perfil, created_at as fecha_creacion 
+               role as rol, avatar_url as foto_perfil, created_at as fecha_creacion,
+               password
         FROM _users WHERE email = $1
       `;
       const result = await client.query(query, [respuesta.data.email]);
@@ -584,28 +611,52 @@ export const loginConGoogle = async (accessToken) => {
       if (result.rows.length > 0) {
         console.log("✅ Usuario encontrado en DB, ID:", result.rows[0].id);
         usuario = result.rows[0];
+        
+        // Si el usuario existe pero no tiene avatar de Google, actualizarlo
+        if (respuesta.data.picture && !usuario.foto_perfil) {
+          const updateAvatar = await client.query(
+            'UPDATE _users SET avatar_url = $1, updated_at = NOW() WHERE id = $2 RETURNING avatar_url',
+            [respuesta.data.picture, usuario.id]
+          );
+          console.log("🔄 Avatar actualizado con foto de Google");
+          usuario.foto_perfil = updateAvatar.rows[0].avatar_url;
+        }
       } else {
         console.log("🆕 Creando nuevo usuario...");
         // Generar ID único
         const userId = uuidv4();
         
         // Crear username basado en el nombre
-        const nombreUsuarioBase = respuesta.data.name?.toLowerCase().replace(/[^a-z0-9]/g, '_') || 'usuario';
+        const nombreUsuarioBase = respuesta.data.name 
+          ? respuesta.data.name.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 15)
+          : 'usuario';
+        
         const randomNum = Math.floor(Math.random() * 10000);
         const username = `${nombreUsuarioBase}_${randomNum}`;
         
+        // Nombre completo
+        const fullName = respuesta.data.name || respuesta.data.email.split('@')[0];
+        
+        // Avatar
+        const avatar = respuesta.data.picture || 'https://res.cloudinary.com/de8qn7bm1/image/upload/v1762320292/Default_pfp.svg_j0obpx.png';
+        
         const insertQuery = `
-          INSERT INTO _users (id, username, full_name, email, role, avatar_url, created_at, updated_at) 
+          INSERT INTO _users (
+            id, username, full_name, email, role, avatar_url, 
+            created_at, updated_at
+          ) 
           VALUES ($1, $2, $3, $4, 'user', $5, NOW(), NOW()) 
-          RETURNING id, username as nombre_usuario, full_name as nombre, email, role as rol, avatar_url as foto_perfil, created_at as fecha_creacion
+          RETURNING id, username as nombre_usuario, full_name as nombre, 
+                   email, role as rol, avatar_url as foto_perfil, 
+                   created_at as fecha_creacion
         `;
         
         const nuevoUsuario = await client.query(insertQuery, [
           userId,
           username,
-          respuesta.data.name || respuesta.data.email.split('@')[0],
+          fullName,
           respuesta.data.email,
-          respuesta.data.picture || 'https://res.cloudinary.com/de8qn7bm1/image/upload/v1762320292/Default_pfp.svg_j0obpx.png'
+          avatar
         ]);
         
         usuario = nuevoUsuario.rows[0];
@@ -638,7 +689,15 @@ export const loginConGoogle = async (accessToken) => {
       
       return {
         exito: true, 
-        usuario: usuario,
+        usuario: {
+          id: usuario.id,
+          nombre: usuario.nombre,
+          email: usuario.email,
+          nombre_usuario: usuario.nombre_usuario,
+          rol: usuario.rol,
+          foto_perfil: usuario.foto_perfil,
+          fecha_creacion: usuario.fecha_creacion
+        },
         token: token
       };
       
@@ -650,12 +709,6 @@ export const loginConGoogle = async (accessToken) => {
         error: 'Error al procesar usuario en la base de datos',
         codigo: 'QUERY_ERROR'
       };
-    } finally {
-      // SIEMPRE liberar el cliente
-      if (client) {
-        client.release();
-        console.log("🔗 Conexión a DB liberada");
-      }
     }
     
   } catch (error) {
@@ -687,15 +740,30 @@ export const loginConGoogle = async (accessToken) => {
       };
     }
     
+    // Error de red
+    if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
+      return { 
+        exito: false, 
+        error: 'Error de conexión a internet',
+        codigo: 'ERROR_CONEXION'
+      };
+    }
+    
     return { 
       exito: false, 
-      error: 'Error autenticando con Google',
+      error: 'Error autenticando con Google: ' + error.message,
       codigo: 'ERROR_GOOGLE'
     };
+  } finally {
+    // SIEMPRE liberar el cliente
+    if (client) {
+      client.release();
+      console.log("🔗 Conexión a DB liberada");
+    }
   }
 };
 
-// Cambiar contraseña - VERSIÓN CORREGIDA
+// Cambiar contraseña - AHORA USANDO SHA256
 export const cambiarContrasena = async (usuarioId, contrasenaActual, nuevaContrasena) => {
   let client;
   
@@ -713,8 +781,8 @@ export const cambiarContrasena = async (usuarioId, contrasenaActual, nuevaContra
     
     client = await pool.connect();
     
-    // Obtener usuario actual (usando _users)
-    const query = 'SELECT password as contrasena_hash FROM _users WHERE id = $1';
+    // Obtener usuario actual
+    const query = 'SELECT password FROM _users WHERE id = $1';
     const result = await client.query(query, [usuarioId]);
     
     if (result.rows.length === 0) {
@@ -726,9 +794,25 @@ export const cambiarContrasena = async (usuarioId, contrasenaActual, nuevaContra
     }
     
     const usuario = result.rows[0];
+    const hashActual = usuario.password;
     
     // Verificar contraseña actual
-    const contrasenaActualValida = await bcrypt.compare(contrasenaActual, usuario.contrasena_hash);
+    let contrasenaActualValida = false;
+    
+    if (hashActual.startsWith('$2')) {
+      // Hash bcrypt
+      contrasenaActualValida = await bcrypt.compare(contrasenaActual, hashActual);
+    } 
+    else if (hashActual.length === 64 && /^[a-f0-9]{64}$/i.test(hashActual)) {
+      // Hash SHA256
+      const hashCalculado = crypto
+        .createHash('sha256')
+        .update(contrasenaActual)
+        .digest('hex')
+        .toLowerCase();
+      
+      contrasenaActualValida = hashCalculado === hashActual.toLowerCase();
+    }
     
     if (!contrasenaActualValida) {
       return { 
@@ -738,15 +822,18 @@ export const cambiarContrasena = async (usuarioId, contrasenaActual, nuevaContra
       };
     }
     
-    // Hash de la nueva contraseña
-    const saltRounds = 10;
-    const nuevaPasswordHash = await bcrypt.hash(nuevaContrasena, saltRounds);
+    // 🔥 Hash de la nueva contraseña CON SHA256
+    const nuevaPasswordHash = crypto
+      .createHash('sha256')
+      .update(nuevaContrasena)
+      .digest('hex')
+      .toLowerCase();
     
-    // Actualizar en la base de datos (usando _users)
+    // Actualizar en la base de datos
     const updateQuery = 'UPDATE _users SET password = $1, updated_at = NOW() WHERE id = $2';
     await client.query(updateQuery, [nuevaPasswordHash, usuarioId]);
     
-    console.log("✅ Contraseña actualizada para usuario ID:", usuarioId);
+    console.log("✅ Contraseña actualizada con SHA256 para usuario ID:", usuarioId);
     
     return { 
       exito: true,
@@ -755,7 +842,6 @@ export const cambiarContrasena = async (usuarioId, contrasenaActual, nuevaContra
     
   } catch (error) {
     console.error('❌ Error en cambiarContrasena:', error.message);
-    console.error('🔧 Stack:', error.stack);
     return { 
       exito: false, 
       error: 'Error del servidor al cambiar contraseña',
