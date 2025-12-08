@@ -20,7 +20,26 @@ import {
   verificarSiSigue
 } from '../controladores/usuarioControlador.js';
 import { upload } from '../configuracion/cloudinary.js';
+import multer from 'multer';
+import path from 'path'
 const router = express.Router();
+
+// Configurar multer para almacenamiento temporal
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, 'uploads/');
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({ 
+  storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB
+});
+
 
 // ==================== RUTAS DE PERFIL ====================
 
@@ -442,32 +461,17 @@ router.get('/verificar-seguimiento/:id', autenticarUsuario, async (req, res) => 
 
 // ==================== RUTAS DE FOTOS ====================
 
-// POST /api/usuario/foto-perfil - Subir foto de perfil
+// Ruta corregida:
 router.post('/foto-perfil', autenticarUsuario, upload.single('imagen'), async (req, res) => {
   try {
-    console.log('📸 POST /usuario/foto-perfil - Usuario ID:', req.usuario.id);
-    
     if (!req.file) {
-      return res.status(400).json({
-        exito: false,
-        error: 'No se subió ninguna imagen'
-      });
+      return res.status(400).json({ exito: false, error: 'No se subió ninguna imagen' });
     }
-
-    const resultado = await subirFotoPerfil(req.usuario.id, req.file.path);
     
-    res.json({ 
-      exito: true, 
-      usuario: resultado.usuario,
-      url: resultado.url,
-      mensaje: 'Foto de perfil actualizada exitosamente'
-    });
+    const resultado = await subirFotoPerfil(req.usuario.id, req.file.path);
+    res.json(resultado);
   } catch (error) {
-    console.error('❌ Error en POST /usuario/foto-perfil:', error);
-    res.status(500).json({ 
-      exito: false, 
-      error: 'Error al subir la foto de perfil'
-    });
+    res.status(500).json({ exito: false, error: error.message });
   }
 });
 
