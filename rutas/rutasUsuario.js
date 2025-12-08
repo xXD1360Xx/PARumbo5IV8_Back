@@ -19,7 +19,6 @@ import {
   obtenerSeguidos,
   verificarSiSigue
 } from '../controladores/usuarioControlador.js';
-import { upload } from '../configuracion/cloudinary.js';
 import multer from 'multer';
 import path from 'path'
 const router = express.Router();
