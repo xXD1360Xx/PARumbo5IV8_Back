@@ -1,6 +1,6 @@
 import { pool } from '../configuracion/basedeDatos.js';
 import crypto from 'crypto';
-import { cloudinary } from '../configuracion/cloudinary.js';
+import { subirACloudinary, eliminarDeCloudinary, extraerPublicId } from '../configuracion/cloudinary.js';
 
 // ==================== FUNCIONES DE BÚSQUEDA Y SEGUIMIENTO ====================
 
@@ -1020,30 +1020,22 @@ export const buscarUsuariosPorRol = async (rol, usuarioActualId = null, pagina =
     throw error;
   }
 };
-/**
- * FUNCIONES DE CLOUDINARY PARA FOTOS DE PERFIL Y PORTADA
- */
+
+
+
+
+// ==================== FUNCIONES DE CLOUDINARY ====================
 
 /**
- * Subir foto de perfil a Cloudinary y actualizar en BD
+ * Subir foto de perfil
  */
-export const subirFotoPerfil = async (usuarioId, imagePath) => {
+export const subirFotoPerfil = async (usuarioId, filePath) => {
   try {
-    console.log('📸 Subiendo foto de perfil para usuario ID:', usuarioId);
+    console.log('📸 [CLOUDINARY] Subiendo foto de perfil para usuario ID:', usuarioId);
     
-    // Subir imagen a Cloudinary
-    const resultado = await cloudinary.uploader.upload(imagePath, {
-      folder: 'perfiles/avatars',
-      transformation: [
-        { width: 500, height: 500, crop: 'fill' }, // Tamaño fijo para avatar
-        { quality: 'auto:good' }, // Calidad optimizada
-        { fetch_format: 'auto' } // Formato automático
-      ],
-      resource_type: 'image'
-    });
-
-    console.log('✅ Imagen subida a Cloudinary:', resultado.secure_url);
-
+    // Subir a Cloudinary
+    const cloudinaryResult = await subirACloudinary(filePath, 'avatar');
+    
     // Actualizar en base de datos
     const query = `
       UPDATE _users 
@@ -1064,7 +1056,7 @@ export const subirFotoPerfil = async (usuarioId, imagePath) => {
         created_at as fecha_creacion
     `;
 
-    const result = await pool.query(query, [resultado.secure_url, usuarioId]);
+    const result = await pool.query(query, [cloudinaryResult.url, usuarioId]);
 
     if (result.rows.length === 0) {
       throw new Error('Usuario no encontrado');
@@ -1073,46 +1065,26 @@ export const subirFotoPerfil = async (usuarioId, imagePath) => {
     return {
       exito: true,
       usuario: result.rows[0],
-      url: resultado.secure_url,
-      public_id: resultado.public_id
+      url: cloudinaryResult.url,
+      public_id: cloudinaryResult.public_id
     };
 
   } catch (error) {
     console.error('❌ Error en subirFotoPerfil:', error);
-    
-    // Intentar eliminar la imagen de Cloudinary si hubo error
-    if (error.upload_result && error.upload_result.public_id) {
-      try {
-        await cloudinary.uploader.destroy(error.upload_result.public_id);
-      } catch (destroyError) {
-        console.error('⚠️ Error al eliminar imagen fallida de Cloudinary:', destroyError);
-      }
-    }
-    
     throw new Error(`Error al subir foto de perfil: ${error.message}`);
   }
 };
 
 /**
- * Subir foto de portada a Cloudinary y actualizar en BD
+ * Subir foto de portada
  */
-export const subirFotoPortada = async (usuarioId, imagePath) => {
+export const subirFotoPortada = async (usuarioId, filePath) => {
   try {
-    console.log('🌅 Subiendo foto de portada para usuario ID:', usuarioId);
+    console.log('🌅 [CLOUDINARY] Subiendo foto de portada para usuario ID:', usuarioId);
     
-    // Subir imagen a Cloudinary
-    const resultado = await cloudinary.uploader.upload(imagePath, {
-      folder: 'perfiles/banners',
-      transformation: [
-        { width: 1200, height: 400, crop: 'fill' }, // Tamaño optimizado para banner
-        { quality: 'auto:good' },
-        { fetch_format: 'auto' }
-      ],
-      resource_type: 'image'
-    });
-
-    console.log('✅ Imagen subida a Cloudinary:', resultado.secure_url);
-
+    // Subir a Cloudinary
+    const cloudinaryResult = await subirACloudinary(filePath, 'banner');
+    
     // Actualizar en base de datos
     const query = `
       UPDATE _users 
@@ -1133,7 +1105,7 @@ export const subirFotoPortada = async (usuarioId, imagePath) => {
         created_at as fecha_creacion
     `;
 
-    const result = await pool.query(query, [resultado.secure_url, usuarioId]);
+    const result = await pool.query(query, [cloudinaryResult.url, usuarioId]);
 
     if (result.rows.length === 0) {
       throw new Error('Usuario no encontrado');
@@ -1142,34 +1114,24 @@ export const subirFotoPortada = async (usuarioId, imagePath) => {
     return {
       exito: true,
       usuario: result.rows[0],
-      url: resultado.secure_url,
-      public_id: resultado.public_id
+      url: cloudinaryResult.url,
+      public_id: cloudinaryResult.public_id
     };
 
   } catch (error) {
     console.error('❌ Error en subirFotoPortada:', error);
-    
-    // Intentar eliminar la imagen de Cloudinary si hubo error
-    if (error.upload_result && error.upload_result.public_id) {
-      try {
-        await cloudinary.uploader.destroy(error.upload_result.public_id);
-      } catch (destroyError) {
-        console.error('⚠️ Error al eliminar imagen fallida de Cloudinary:', destroyError);
-      }
-    }
-    
     throw new Error(`Error al subir foto de portada: ${error.message}`);
   }
 };
 
 /**
- * Eliminar foto de perfil de Cloudinary y BD
+ * Eliminar foto de perfil
  */
 export const eliminarFotoPerfil = async (usuarioId) => {
   try {
-    console.log('🗑️ Eliminando foto de perfil para usuario ID:', usuarioId);
+    console.log('🗑️ [CLOUDINARY] Eliminando foto de perfil para usuario ID:', usuarioId);
     
-    // Obtener URL actual del avatar
+    // 1. Obtener URL actual del avatar
     const querySelect = `
       SELECT avatar_url FROM _users WHERE id = $1
     `;
@@ -1183,25 +1145,21 @@ export const eliminarFotoPerfil = async (usuarioId) => {
     const currentAvatar = resultSelect.rows[0].avatar_url;
     const defaultAvatar = 'https://res.cloudinary.com/de8qn7bm1/image/upload/v1762320292/Default_pfp.svg_j0obpx.png';
     
-    // Si ya tiene la foto por defecto o no tiene foto
+    // 2. Si ya tiene la foto por defecto o no tiene foto
     if (!currentAvatar || currentAvatar === defaultAvatar) {
       throw new Error('No hay foto de perfil para eliminar');
     }
     
-    // Extraer public_id de Cloudinary URL
-    const publicId = obtenerPublicIdDeCloudinaryUrl(currentAvatar);
-    
+    // 3. Extraer public_id y eliminar de Cloudinary
+    const publicId = extraerPublicId(currentAvatar);
     if (publicId) {
-      // Eliminar de Cloudinary
-      try {
-        await cloudinary.uploader.destroy(publicId);
-        console.log('✅ Imagen eliminada de Cloudinary:', publicId);
-      } catch (cloudinaryError) {
-        console.warn('⚠️ No se pudo eliminar de Cloudinary, continuando con eliminación en BD:', cloudinaryError.message);
+      const eliminado = await eliminarDeCloudinary(publicId);
+      if (!eliminado) {
+        console.warn('⚠️ No se pudo eliminar de Cloudinary, pero continuamos...');
       }
     }
     
-    // Actualizar a foto por defecto en BD
+    // 4. Actualizar a foto por defecto en BD
     const queryUpdate = `
       UPDATE _users 
       SET avatar_url = $1, updated_at = NOW()
@@ -1236,13 +1194,13 @@ export const eliminarFotoPerfil = async (usuarioId) => {
 };
 
 /**
- * Eliminar foto de portada de Cloudinary y BD
+ * Eliminar foto de portada
  */
 export const eliminarFotoPortada = async (usuarioId) => {
   try {
-    console.log('🗑️ Eliminando foto de portada para usuario ID:', usuarioId);
+    console.log('🗑️ [CLOUDINARY] Eliminando foto de portada para usuario ID:', usuarioId);
     
-    // Obtener URL actual del banner
+    // 1. Obtener URL actual del banner
     const querySelect = `
       SELECT banner_url FROM _users WHERE id = $1
     `;
@@ -1255,25 +1213,21 @@ export const eliminarFotoPortada = async (usuarioId) => {
     
     const currentBanner = resultSelect.rows[0].banner_url;
     
-    // Si no tiene banner
+    // 2. Si no tiene banner
     if (!currentBanner) {
       throw new Error('No hay foto de portada para eliminar');
     }
     
-    // Extraer public_id de Cloudinary URL
-    const publicId = obtenerPublicIdDeCloudinaryUrl(currentBanner);
-    
+    // 3. Extraer public_id y eliminar de Cloudinary
+    const publicId = extraerPublicId(currentBanner);
     if (publicId) {
-      // Eliminar de Cloudinary
-      try {
-        await cloudinary.uploader.destroy(publicId);
-        console.log('✅ Imagen eliminada de Cloudinary:', publicId);
-      } catch (cloudinaryError) {
-        console.warn('⚠️ No se pudo eliminar de Cloudinary, continuando con eliminación en BD:', cloudinaryError.message);
+      const eliminado = await eliminarDeCloudinary(publicId);
+      if (!eliminado) {
+        console.warn('⚠️ No se pudo eliminar de Cloudinary, pero continuamos...');
       }
     }
     
-    // Actualizar a null en BD
+    // 4. Actualizar a null en BD
     const queryUpdate = `
       UPDATE _users 
       SET banner_url = NULL, updated_at = NOW()
@@ -1307,71 +1261,8 @@ export const eliminarFotoPortada = async (usuarioId) => {
   }
 };
 
-/**
- * Función auxiliar para extraer public_id de URL de Cloudinary
- */
-const obtenerPublicIdDeCloudinaryUrl = (url) => {
-  if (!url || !url.includes('cloudinary.com')) {
-    return null;
-  }
-  
-  try {
-    // Extraer la parte después de "/upload/"
-    const partes = url.split('/upload/');
-    if (partes.length < 2) return null;
-    
-    // Extraer sin extensión
-    const pathConExtension = partes[1];
-    const pathSinExtension = pathConExtension.replace(/\.[^/.]+$/, ""); // Quitar extensión
-    
-    // Extraer public_id (remover version si existe)
-    const pathParts = pathSinExtension.split('/');
-    const versionIndex = pathParts.findIndex(part => part.startsWith('v'));
-    
-    if (versionIndex !== -1) {
-      pathParts.splice(versionIndex, 1);
-    }
-    
-    return pathParts.join('/');
-  } catch (error) {
-    console.error('❌ Error extrayendo public_id:', error);
-    return null;
-  }
-};
 
-/**
- * Subir imagen genérica (para usar en el futuro)
- */
-export const subirImagen = async (filePath, options = {}) => {
-  try {
-    const defaultOptions = {
-      folder: 'perfiles/general',
-      transformation: [
-        { quality: 'auto' },
-        { fetch_format: 'auto' }
-      ],
-      resource_type: 'image'
-    };
 
-    const uploadOptions = { ...defaultOptions, ...options };
-    
-    const resultado = await cloudinary.uploader.upload(filePath, uploadOptions);
-    
-    return {
-      exito: true,
-      url: resultado.secure_url,
-      public_id: resultado.public_id,
-      format: resultado.format,
-      width: resultado.width,
-      height: resultado.height,
-      bytes: resultado.bytes
-    };
-
-  } catch (error) {
-    console.error('❌ Error en subirImagen:', error);
-    throw error;
-  }
-};
 
 // Exportar todas las funciones
 export default {
