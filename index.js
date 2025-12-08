@@ -11,6 +11,17 @@ import rutasUsuario from './rutas/rutasUsuario.js';          // Nueva
 import rutasTest from './rutas/rutasTest.js';                // Nueva
 import rutasVocacional from './rutas/rutasVocacional.js';    // Nueva
 
+import fs from 'fs';
+import path from 'path';
+
+const uploadsDir = path.join(process.cwd(), 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  console.log('📁 Carpeta uploads creada:', uploadsDir);
+} else {
+  console.log('📁 Carpeta uploads ya existe:', uploadsDir);
+}
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
