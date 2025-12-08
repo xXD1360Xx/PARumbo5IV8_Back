@@ -58,10 +58,10 @@ export const obtenerResultadosTestsUsuario = async (usuarioId, usuarioActualId =
         user_id,
         test_id, 
         score as puntuacion,
-        completed_at as fecha_completado,
+        completed_at as fecha_completado
       FROM _user_test_results 
       WHERE user_id = $1 
-      ORDER BY created_at DESC
+      ORDER BY completed_at DESC
     `;
     
     const result = await pool.query(query, [usuarioId]);
