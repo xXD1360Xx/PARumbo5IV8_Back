@@ -562,9 +562,8 @@ router.get('/estadisticas', autenticarUsuario, async (req, res) => {
       exito: false, 
       error: 'Error al obtener estadísticas',
       data: {
-        resultados_tests: 0,
-        tests_completados: 0,
         resultados_vocacionales: 0,
+        resultados_tests: 0,
         seguidores: 0,
         seguidos: 0,
         privacidad: false
@@ -594,9 +593,8 @@ router.get('/estadisticas/:id', autenticarUsuario, async (req, res) => {
       exito: false, 
       error: 'Error al obtener estadísticas',
       data: {
-        resultados_tests: 0,
-        tests_completados: 0,
         resultados_vocacionales: 0,
+        resultados_tests: 0,
         seguidores: 0,
         seguidos: 0,
         privacidad: true

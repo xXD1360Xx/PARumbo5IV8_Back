@@ -648,7 +648,6 @@ export const obtenerEstadisticasUsuario = async (usuarioId, usuarioActualId = nu
     if (usuarioResult.rows.length === 0) {
       return {
         resultados_tests: 0,
-        tests_completados: 0,
         resultados_vocacionales: 0,
         seguidores: 0,
         seguidos: 0,
@@ -685,9 +684,8 @@ export const obtenerEstadisticasUsuario = async (usuarioId, usuarioActualId = nu
     }
     
     const estadisticas = {
-      resultados_tests: resultadosTests,
-      tests_completados: resultadosTests,
-      resultados_vocacionales: resultadosVocacionales,
+      resultadosTests: resultadosTests,
+      resultadosVocacionales: resultadosVocacionales,
       seguidores: parseInt(usuario.followers_count || 0),
       seguidos: parseInt(usuario.following_count || 0),
       privacidad: usuario.privacidad || false
@@ -701,7 +699,6 @@ export const obtenerEstadisticasUsuario = async (usuarioId, usuarioActualId = nu
     console.error('❌ Error en obtenerEstadisticasUsuario:', error);
     return {
       resultados_tests: 0,
-      tests_completados: 0,
       resultados_vocacionales: 0,
       seguidores: 0,
       seguidos: 0,
