@@ -59,7 +59,6 @@ export const obtenerResultadosTestsUsuario = async (usuarioId, usuarioActualId =
         test_id, 
         score as puntuacion,
         completed_at as fecha_completado,
-        created_at
       FROM _user_test_results 
       WHERE user_id = $1 
       ORDER BY created_at DESC
@@ -75,7 +74,6 @@ export const obtenerResultadosTestsUsuario = async (usuarioId, usuarioActualId =
       test_id: item.test_id,
       score: item.puntuacion,
       completed_at: item.fecha_completado,
-      created_at: item.created_at,
       nombre: obtenerNombreTest(item.test_id),
       area: obtenerAreaTest(item.test_id)
     }));
