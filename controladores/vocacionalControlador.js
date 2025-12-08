@@ -1,9 +1,29 @@
 import { pool } from '../configuracion/basedeDatos.js';
 
-// Obtener todos los resultados vocacionales de un usuario - CORREGIDO
-export const obtenerResultadosVocacionales = async (usuarioId) => {
+// Obtener todos los resultados vocacionales de un usuario con manejo de privacidad
+export const obtenerResultadosVocacionales = async (usuarioId, usuarioActualId = null) => {
   try {
     console.log('🎓 [VOCACIONAL] Obteniendo resultados para usuario ID:', usuarioId);
+    
+    // Verificar permisos
+    if (usuarioActualId !== usuarioId) {
+      const perfilQuery = `SELECT is_private FROM _users WHERE id = $1`;
+      const perfilResult = await pool.query(perfilQuery, [usuarioId]);
+      
+      if (perfilResult.rows.length > 0 && perfilResult.rows[0].is_private) {
+        // Perfil privado: verificar si el usuario actual sigue al usuario
+        const sigueQuery = `
+          SELECT 1 FROM user_follows 
+          WHERE follower_id = $1 AND following_id = $2
+        `;
+        const sigueResult = await pool.query(sigueQuery, [usuarioActualId, usuarioId]);
+        
+        if (sigueResult.rows.length === 0) {
+          console.log('🚫 Sin permisos para ver resultados vocacionales de usuario privado');
+          return []; // Retornar array vacío sin lanzar error
+        }
+      }
+    }
     
     const query = `
       SELECT 
@@ -43,10 +63,30 @@ export const obtenerResultadosVocacionales = async (usuarioId) => {
   }
 };
 
-// Obtener solo el último resultado vocacional - CORREGIDO
-export const obtenerUltimoResultadoVocacional = async (usuarioId) => {
+// Obtener solo el último resultado vocacional con manejo de privacidad
+export const obtenerUltimoResultadoVocacional = async (usuarioId, usuarioActualId = null) => {
   try {
     console.log('🎓 [VOCACIONAL] Obteniendo último resultado para usuario ID:', usuarioId);
+    
+    // Verificar permisos
+    if (usuarioActualId !== usuarioId) {
+      const perfilQuery = `SELECT is_private FROM _users WHERE id = $1`;
+      const perfilResult = await pool.query(perfilQuery, [usuarioId]);
+      
+      if (perfilResult.rows.length > 0 && perfilResult.rows[0].is_private) {
+        // Perfil privado: verificar si el usuario actual sigue al usuario
+        const sigueQuery = `
+          SELECT 1 FROM user_follows 
+          WHERE follower_id = $1 AND following_id = $2
+        `;
+        const sigueResult = await pool.query(sigueQuery, [usuarioActualId, usuarioId]);
+        
+        if (sigueResult.rows.length === 0) {
+          console.log('🚫 Sin permisos para ver último resultado vocacional de usuario privado');
+          return null;
+        }
+      }
+    }
     
     const query = `
       SELECT 
@@ -92,10 +132,36 @@ export const obtenerUltimoResultadoVocacional = async (usuarioId) => {
   }
 };
 
-// Obtener estadísticas vocacionales - CORREGIDO
-export const obtenerEstadisticasVocacionales = async (usuarioId) => {
+// Obtener estadísticas vocacionales con manejo de privacidad
+export const obtenerEstadisticasVocacionales = async (usuarioId, usuarioActualId = null) => {
   try {
     console.log('📈 [VOCACIONAL] Obteniendo estadísticas para usuario ID:', usuarioId);
+    
+    // Verificar permisos
+    if (usuarioActualId !== usuarioId) {
+      const perfilQuery = `SELECT is_private FROM _users WHERE id = $1`;
+      const perfilResult = await pool.query(perfilQuery, [usuarioId]);
+      
+      if (perfilResult.rows.length > 0 && perfilResult.rows[0].is_private) {
+        // Perfil privado: verificar si el usuario actual sigue al usuario
+        const sigueQuery = `
+          SELECT 1 FROM user_follows 
+          WHERE follower_id = $1 AND following_id = $2
+        `;
+        const sigueResult = await pool.query(sigueQuery, [usuarioActualId, usuarioId]);
+        
+        if (sigueResult.rows.length === 0) {
+          console.log('🚫 Sin permisos para ver estadísticas vocacionales de usuario privado');
+          return {
+            total_resultados: 0,
+            promedio_general: "0.00",
+            distribucion_zonas: [],
+            fecha_ultimo_resultado: null,
+            tiene_permiso: false
+          };
+        }
+      }
+    }
     
     const consulta = `
       SELECT 
@@ -132,7 +198,8 @@ export const obtenerEstadisticasVocacionales = async (usuarioId) => {
       total_resultados: total,
       promedio_general: promedioResult.rows[0]?.promedio ? parseFloat(promedioResult.rows[0].promedio).toFixed(2) : "0.00",
       distribucion_zonas: distribucion_zonas,
-      fecha_ultimo_resultado: resultado.rows[0]?.fecha_ultimo || null
+      fecha_ultimo_resultado: resultado.rows[0]?.fecha_ultimo || null,
+      tiene_permiso: true
     };
     
     console.log('📊 Estadísticas vocacionales:', estadisticas);
@@ -144,7 +211,8 @@ export const obtenerEstadisticasVocacionales = async (usuarioId) => {
       total_resultados: 0,
       promedio_general: "0.00",
       distribucion_zonas: [],
-      fecha_ultimo_resultado: null
+      fecha_ultimo_resultado: null,
+      tiene_permiso: false
     };
   }
 };
