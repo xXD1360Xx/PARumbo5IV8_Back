@@ -1,5 +1,6 @@
 import { pool } from '../configuracion/basedeDatos.js';
 import crypto from 'crypto';
+import { cloudinary } from '../configuracion/cloudinary.js';
 
 // ==================== FUNCIONES DE BÚSQUEDA Y SEGUIMIENTO ====================
 
@@ -1016,6 +1017,358 @@ export const buscarUsuariosPorRol = async (rol, usuarioActualId = null, pagina =
     
   } catch (error) {
     console.error('❌ Error en buscarUsuariosPorRol:', error);
+    throw error;
+  }
+};
+/**
+ * FUNCIONES DE CLOUDINARY PARA FOTOS DE PERFIL Y PORTADA
+ */
+
+/**
+ * Subir foto de perfil a Cloudinary y actualizar en BD
+ */
+export const subirFotoPerfil = async (usuarioId, imagePath) => {
+  try {
+    console.log('📸 Subiendo foto de perfil para usuario ID:', usuarioId);
+    
+    // Subir imagen a Cloudinary
+    const resultado = await cloudinary.uploader.upload(imagePath, {
+      folder: 'perfiles/avatars',
+      transformation: [
+        { width: 500, height: 500, crop: 'fill' }, // Tamaño fijo para avatar
+        { quality: 'auto:good' }, // Calidad optimizada
+        { fetch_format: 'auto' } // Formato automático
+      ],
+      resource_type: 'image'
+    });
+
+    console.log('✅ Imagen subida a Cloudinary:', resultado.secure_url);
+
+    // Actualizar en base de datos
+    const query = `
+      UPDATE _users 
+      SET avatar_url = $1, updated_at = NOW()
+      WHERE id = $2
+      RETURNING 
+        id,
+        username as nombre_usuario,
+        full_name as nombre,
+        email,
+        role as rol,
+        bio as biografia,
+        avatar_url as foto_perfil,
+        banner_url as portada,
+        is_private as privacidad,
+        followers_count as seguidores,
+        following_count as seguidos,
+        created_at as fecha_creacion
+    `;
+
+    const result = await pool.query(query, [resultado.secure_url, usuarioId]);
+
+    if (result.rows.length === 0) {
+      throw new Error('Usuario no encontrado');
+    }
+
+    return {
+      exito: true,
+      usuario: result.rows[0],
+      url: resultado.secure_url,
+      public_id: resultado.public_id
+    };
+
+  } catch (error) {
+    console.error('❌ Error en subirFotoPerfil:', error);
+    
+    // Intentar eliminar la imagen de Cloudinary si hubo error
+    if (error.upload_result && error.upload_result.public_id) {
+      try {
+        await cloudinary.uploader.destroy(error.upload_result.public_id);
+      } catch (destroyError) {
+        console.error('⚠️ Error al eliminar imagen fallida de Cloudinary:', destroyError);
+      }
+    }
+    
+    throw new Error(`Error al subir foto de perfil: ${error.message}`);
+  }
+};
+
+/**
+ * Subir foto de portada a Cloudinary y actualizar en BD
+ */
+export const subirFotoPortada = async (usuarioId, imagePath) => {
+  try {
+    console.log('🌅 Subiendo foto de portada para usuario ID:', usuarioId);
+    
+    // Subir imagen a Cloudinary
+    const resultado = await cloudinary.uploader.upload(imagePath, {
+      folder: 'perfiles/banners',
+      transformation: [
+        { width: 1200, height: 400, crop: 'fill' }, // Tamaño optimizado para banner
+        { quality: 'auto:good' },
+        { fetch_format: 'auto' }
+      ],
+      resource_type: 'image'
+    });
+
+    console.log('✅ Imagen subida a Cloudinary:', resultado.secure_url);
+
+    // Actualizar en base de datos
+    const query = `
+      UPDATE _users 
+      SET banner_url = $1, updated_at = NOW()
+      WHERE id = $2
+      RETURNING 
+        id,
+        username as nombre_usuario,
+        full_name as nombre,
+        email,
+        role as rol,
+        bio as biografia,
+        avatar_url as foto_perfil,
+        banner_url as portada,
+        is_private as privacidad,
+        followers_count as seguidores,
+        following_count as seguidos,
+        created_at as fecha_creacion
+    `;
+
+    const result = await pool.query(query, [resultado.secure_url, usuarioId]);
+
+    if (result.rows.length === 0) {
+      throw new Error('Usuario no encontrado');
+    }
+
+    return {
+      exito: true,
+      usuario: result.rows[0],
+      url: resultado.secure_url,
+      public_id: resultado.public_id
+    };
+
+  } catch (error) {
+    console.error('❌ Error en subirFotoPortada:', error);
+    
+    // Intentar eliminar la imagen de Cloudinary si hubo error
+    if (error.upload_result && error.upload_result.public_id) {
+      try {
+        await cloudinary.uploader.destroy(error.upload_result.public_id);
+      } catch (destroyError) {
+        console.error('⚠️ Error al eliminar imagen fallida de Cloudinary:', destroyError);
+      }
+    }
+    
+    throw new Error(`Error al subir foto de portada: ${error.message}`);
+  }
+};
+
+/**
+ * Eliminar foto de perfil de Cloudinary y BD
+ */
+export const eliminarFotoPerfil = async (usuarioId) => {
+  try {
+    console.log('🗑️ Eliminando foto de perfil para usuario ID:', usuarioId);
+    
+    // Obtener URL actual del avatar
+    const querySelect = `
+      SELECT avatar_url FROM _users WHERE id = $1
+    `;
+    
+    const resultSelect = await pool.query(querySelect, [usuarioId]);
+    
+    if (resultSelect.rows.length === 0) {
+      throw new Error('Usuario no encontrado');
+    }
+    
+    const currentAvatar = resultSelect.rows[0].avatar_url;
+    const defaultAvatar = 'https://res.cloudinary.com/de8qn7bm1/image/upload/v1762320292/Default_pfp.svg_j0obpx.png';
+    
+    // Si ya tiene la foto por defecto o no tiene foto
+    if (!currentAvatar || currentAvatar === defaultAvatar) {
+      throw new Error('No hay foto de perfil para eliminar');
+    }
+    
+    // Extraer public_id de Cloudinary URL
+    const publicId = obtenerPublicIdDeCloudinaryUrl(currentAvatar);
+    
+    if (publicId) {
+      // Eliminar de Cloudinary
+      try {
+        await cloudinary.uploader.destroy(publicId);
+        console.log('✅ Imagen eliminada de Cloudinary:', publicId);
+      } catch (cloudinaryError) {
+        console.warn('⚠️ No se pudo eliminar de Cloudinary, continuando con eliminación en BD:', cloudinaryError.message);
+      }
+    }
+    
+    // Actualizar a foto por defecto en BD
+    const queryUpdate = `
+      UPDATE _users 
+      SET avatar_url = $1, updated_at = NOW()
+      WHERE id = $2
+      RETURNING 
+        id,
+        username as nombre_usuario,
+        full_name as nombre,
+        email,
+        role as rol,
+        bio as biografia,
+        avatar_url as foto_perfil,
+        banner_url as portada,
+        is_private as privacidad,
+        followers_count as seguidores,
+        following_count as seguidos,
+        created_at as fecha_creacion
+    `;
+
+    const resultUpdate = await pool.query(queryUpdate, [defaultAvatar, usuarioId]);
+
+    return {
+      exito: true,
+      usuario: resultUpdate.rows[0],
+      mensaje: 'Foto de perfil eliminada exitosamente'
+    };
+
+  } catch (error) {
+    console.error('❌ Error en eliminarFotoPerfil:', error);
+    throw new Error(`Error al eliminar foto de perfil: ${error.message}`);
+  }
+};
+
+/**
+ * Eliminar foto de portada de Cloudinary y BD
+ */
+export const eliminarFotoPortada = async (usuarioId) => {
+  try {
+    console.log('🗑️ Eliminando foto de portada para usuario ID:', usuarioId);
+    
+    // Obtener URL actual del banner
+    const querySelect = `
+      SELECT banner_url FROM _users WHERE id = $1
+    `;
+    
+    const resultSelect = await pool.query(querySelect, [usuarioId]);
+    
+    if (resultSelect.rows.length === 0) {
+      throw new Error('Usuario no encontrado');
+    }
+    
+    const currentBanner = resultSelect.rows[0].banner_url;
+    
+    // Si no tiene banner
+    if (!currentBanner) {
+      throw new Error('No hay foto de portada para eliminar');
+    }
+    
+    // Extraer public_id de Cloudinary URL
+    const publicId = obtenerPublicIdDeCloudinaryUrl(currentBanner);
+    
+    if (publicId) {
+      // Eliminar de Cloudinary
+      try {
+        await cloudinary.uploader.destroy(publicId);
+        console.log('✅ Imagen eliminada de Cloudinary:', publicId);
+      } catch (cloudinaryError) {
+        console.warn('⚠️ No se pudo eliminar de Cloudinary, continuando con eliminación en BD:', cloudinaryError.message);
+      }
+    }
+    
+    // Actualizar a null en BD
+    const queryUpdate = `
+      UPDATE _users 
+      SET banner_url = NULL, updated_at = NOW()
+      WHERE id = $1
+      RETURNING 
+        id,
+        username as nombre_usuario,
+        full_name as nombre,
+        email,
+        role as rol,
+        bio as biografia,
+        avatar_url as foto_perfil,
+        banner_url as portada,
+        is_private as privacidad,
+        followers_count as seguidores,
+        following_count as seguidos,
+        created_at as fecha_creacion
+    `;
+
+    const resultUpdate = await pool.query(queryUpdate, [usuarioId]);
+
+    return {
+      exito: true,
+      usuario: resultUpdate.rows[0],
+      mensaje: 'Foto de portada eliminada exitosamente'
+    };
+
+  } catch (error) {
+    console.error('❌ Error en eliminarFotoPortada:', error);
+    throw new Error(`Error al eliminar foto de portada: ${error.message}`);
+  }
+};
+
+/**
+ * Función auxiliar para extraer public_id de URL de Cloudinary
+ */
+const obtenerPublicIdDeCloudinaryUrl = (url) => {
+  if (!url || !url.includes('cloudinary.com')) {
+    return null;
+  }
+  
+  try {
+    // Extraer la parte después de "/upload/"
+    const partes = url.split('/upload/');
+    if (partes.length < 2) return null;
+    
+    // Extraer sin extensión
+    const pathConExtension = partes[1];
+    const pathSinExtension = pathConExtension.replace(/\.[^/.]+$/, ""); // Quitar extensión
+    
+    // Extraer public_id (remover version si existe)
+    const pathParts = pathSinExtension.split('/');
+    const versionIndex = pathParts.findIndex(part => part.startsWith('v'));
+    
+    if (versionIndex !== -1) {
+      pathParts.splice(versionIndex, 1);
+    }
+    
+    return pathParts.join('/');
+  } catch (error) {
+    console.error('❌ Error extrayendo public_id:', error);
+    return null;
+  }
+};
+
+/**
+ * Subir imagen genérica (para usar en el futuro)
+ */
+export const subirImagen = async (filePath, options = {}) => {
+  try {
+    const defaultOptions = {
+      folder: 'perfiles/general',
+      transformation: [
+        { quality: 'auto' },
+        { fetch_format: 'auto' }
+      ],
+      resource_type: 'image'
+    };
+
+    const uploadOptions = { ...defaultOptions, ...options };
+    
+    const resultado = await cloudinary.uploader.upload(filePath, uploadOptions);
+    
+    return {
+      exito: true,
+      url: resultado.secure_url,
+      public_id: resultado.public_id,
+      format: resultado.format,
+      width: resultado.width,
+      height: resultado.height,
+      bytes: resultado.bytes
+    };
+
+  } catch (error) {
+    console.error('❌ Error en subirImagen:', error);
     throw error;
   }
 };

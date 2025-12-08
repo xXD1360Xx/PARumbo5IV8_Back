@@ -4,11 +4,11 @@ import {
   obtenerMiPerfil,
   obtenerEstadisticasUsuario,
   actualizarPerfilUsuario,
+  // FUNCIONES DE CLOUDINARY
   subirFotoPerfil,
   subirFotoPortada,
   eliminarFotoPerfil,
   eliminarFotoPortada,
-  upload,
   // NUEVAS FUNCIONES
   verificarDisponibilidadUsername,
   buscarUsuarios,
@@ -19,7 +19,7 @@ import {
   obtenerSeguidos,
   verificarSiSigue
 } from '../controladores/usuarioControlador.js';
-
+import { upload } from '../configuracion/cloudinary.js';
 const router = express.Router();
 
 // ==================== RUTAS DE PERFIL ====================
