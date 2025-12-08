@@ -3,7 +3,10 @@ import { autenticarUsuario } from '../middleware/autenticacionMiddleware.js';
 import { 
   obtenerResultadosVocacionales,
   obtenerUltimoResultadoVocacional,
-  obtenerEstadisticasVocacionales
+  obtenerEstadisticasVocacionales,
+  obtenerTopCarreras,
+  crearResultadoVocacional,
+  eliminarResultadoVocacional
 } from '../controladores/vocacionalControlador.js';
 
 const router = express.Router();
@@ -29,7 +32,7 @@ router.get('/resultados', autenticarUsuario, async (req, res) => {
     console.error('❌ Error en GET /vocacional/resultados:', error);
     res.status(500).json({ 
       exito: false, 
-      error: 'Error al obtener resultados vocacionales',
+      error: error.message || 'Error al obtener resultados vocacionales',
       data: [],
       tiene_permiso: false
     });
@@ -67,7 +70,7 @@ router.get('/resultados/:usuarioId', autenticarUsuario, async (req, res) => {
     console.error('❌ Error en GET /vocacional/resultados/:usuarioId:', error);
     res.status(500).json({ 
       exito: false, 
-      error: 'Error al obtener resultados vocacionales',
+      error: error.message || 'Error al obtener resultados vocacionales',
       data: [],
       tiene_permiso: false
     });
@@ -83,10 +86,10 @@ router.get('/ultimo', autenticarUsuario, async (req, res) => {
     const ultimoResultado = await obtenerUltimoResultadoVocacional(usuarioId, usuarioId);
     
     if (!ultimoResultado) {
-      return res.status(404).json({
-        exito: false,
-        error: 'No se encontraron resultados vocacionales',
+      return res.status(200).json({
+        exito: true,
         data: null,
+        mensaje: 'No se encontraron resultados vocacionales',
         tiene_permiso: true
       });
     }
@@ -101,7 +104,7 @@ router.get('/ultimo', autenticarUsuario, async (req, res) => {
     console.error('❌ Error en GET /vocacional/ultimo:', error);
     res.status(500).json({ 
       exito: false, 
-      error: 'Error al obtener el último resultado vocacional',
+      error: error.message || 'Error al obtener el último resultado vocacional',
       data: null,
       tiene_permiso: false
     });
@@ -129,10 +132,10 @@ router.get('/ultimo/:usuarioId', autenticarUsuario, async (req, res) => {
     const tienePermiso = ultimoResultado !== null || usuarioActualId === usuarioId;
     
     if (!ultimoResultado) {
-      return res.status(404).json({
-        exito: false,
-        error: 'No se encontraron resultados vocacionales',
+      return res.status(200).json({
+        exito: true,
         data: null,
+        mensaje: 'No se encontraron resultados vocacionales',
         tiene_permiso: tienePermiso
       });
     }
@@ -147,7 +150,7 @@ router.get('/ultimo/:usuarioId', autenticarUsuario, async (req, res) => {
     console.error('❌ Error en GET /vocacional/ultimo/:usuarioId:', error);
     res.status(500).json({ 
       exito: false, 
-      error: 'Error al obtener el último resultado vocacional',
+      error: error.message || 'Error al obtener el último resultado vocacional',
       data: null,
       tiene_permiso: false
     });
@@ -173,12 +176,19 @@ router.get('/estadisticas', autenticarUsuario, async (req, res) => {
     console.error('❌ Error en GET /vocacional/estadisticas:', error);
     res.status(500).json({ 
       exito: false, 
-      error: 'Error al obtener estadísticas vocacionales',
+      error: error.message || 'Error al obtener estadísticas vocacionales',
       data: {
         total_resultados: 0,
         promedio_general: "0.00",
         distribucion_zonas: [],
         fecha_ultimo_resultado: null,
+        perfiles_promedio: {
+          tecnologico: "0.0",
+          cientifico: "0.0",
+          salud: "0.0",
+          administrativo: "0.0",
+          social: "0.0"
+        },
         tiene_permiso: false
       }
     });
@@ -202,6 +212,13 @@ router.get('/estadisticas/:usuarioId', autenticarUsuario, async (req, res) => {
           promedio_general: "0.00",
           distribucion_zonas: [],
           fecha_ultimo_resultado: null,
+          perfiles_promedio: {
+            tecnologico: "0.0",
+            cientifico: "0.0",
+            salud: "0.0",
+            administrativo: "0.0",
+            social: "0.0"
+          },
           tiene_permiso: false
         }
       });
@@ -218,21 +235,241 @@ router.get('/estadisticas/:usuarioId', autenticarUsuario, async (req, res) => {
     console.error('❌ Error en GET /vocacional/estadisticas/:usuarioId:', error);
     res.status(500).json({ 
       exito: false, 
-      error: 'Error al obtener estadísticas vocacionales',
+      error: error.message || 'Error al obtener estadísticas vocacionales',
       data: {
         total_resultados: 0,
         promedio_general: "0.00",
         distribucion_zonas: [],
         fecha_ultimo_resultado: null,
+        perfiles_promedio: {
+          tecnologico: "0.0",
+          cientifico: "0.0",
+          salud: "0.0",
+          administrativo: "0.0",
+          social: "0.0"
+        },
         tiene_permiso: false
       }
     });
   }
 });
 
-// ==================== RUTAS PARA LA PANTALLA DE RESULTADOS ====================
+// ==================== TOP CARRERAS ====================
 
-// GET /api/vocacional/resumen/:usuarioId - Resumen completo para la pantalla de resultados
+// GET /api/vocacional/top-carreras - Obtener top 5 carreras del usuario actual
+router.get('/top-carreras', autenticarUsuario, async (req, res) => {
+  try {
+    const usuarioId = req.usuario.id;
+    const limite = req.query.limite ? parseInt(req.query.limite) : 5;
+    
+    console.log('🏆 GET /vocacional/top-carreras - Usuario ID:', usuarioId, 'Límite:', limite);
+    
+    const topCarreras = await obtenerTopCarreras(usuarioId, usuarioId, limite);
+    
+    res.json({ 
+      exito: true, 
+      data: topCarreras,
+      mensaje: `Top ${topCarreras.length} carreras obtenidas exitosamente`,
+      total: topCarreras.length,
+      tiene_permiso: true
+    });
+  } catch (error) {
+    console.error('❌ Error en GET /vocacional/top-carreras:', error);
+    res.status(500).json({ 
+      exito: false, 
+      error: error.message || 'Error al obtener top carreras',
+      data: [],
+      tiene_permiso: false
+    });
+  }
+});
+
+// GET /api/vocacional/top-carreras/:usuarioId - Obtener top carreras de otro usuario
+router.get('/top-carreras/:usuarioId', autenticarUsuario, async (req, res) => {
+  try {
+    const { usuarioId } = req.params;
+    const usuarioActualId = req.usuario.id;
+    const limite = req.query.limite ? parseInt(req.query.limite) : 5;
+    
+    console.log('🏆 GET /vocacional/top-carreras/:usuarioId - Usuario solicitado:', usuarioId, 'Usuario actual:', usuarioActualId);
+    
+    if (!usuarioId) {
+      return res.status(400).json({
+        exito: false,
+        error: 'ID del usuario es requerido',
+        data: [],
+        tiene_permiso: false
+      });
+    }
+
+    const topCarreras = await obtenerTopCarreras(usuarioId, usuarioActualId, limite);
+    const tienePermiso = topCarreras.length > 0 || usuarioActualId === usuarioId;
+    
+    res.json({ 
+      exito: true, 
+      data: topCarreras,
+      mensaje: `Top ${topCarreras.length} carreras obtenidas exitosamente`,
+      total: topCarreras.length,
+      tiene_permiso: tienePermiso
+    });
+  } catch (error) {
+    console.error('❌ Error en GET /vocacional/top-carreras/:usuarioId:', error);
+    res.status(500).json({ 
+      exito: false, 
+      error: error.message || 'Error al obtener top carreras',
+      data: [],
+      tiene_permiso: false
+    });
+  }
+});
+
+// ==================== CRUD VOCACIONAL ====================
+
+// POST /api/vocacional/crear - Crear nuevo resultado vocacional
+router.post('/crear', autenticarUsuario, async (req, res) => {
+  try {
+    const usuarioId = req.usuario.id;
+    const datos = req.body;
+    
+    console.log('➕ POST /vocacional/crear - Usuario ID:', usuarioId, 'Datos recibidos:', Object.keys(datos));
+    
+    // Validar datos mínimos requeridos
+    if (!datos.resultados_completos || !Array.isArray(datos.resultados_completos)) {
+      return res.status(400).json({
+        exito: false,
+        error: 'El campo resultados_completos es requerido y debe ser un array'
+      });
+    }
+    
+    // Validar perfiles
+    const perfilesRequeridos = [
+      'perfil_tecnologico',
+      'perfil_cientifico', 
+      'perfil_salud',
+      'perfil_administrativo',
+      'perfil_social'
+    ];
+    
+    for (const perfil of perfilesRequeridos) {
+      if (datos[perfil] === undefined || datos[perfil] === null) {
+        datos[perfil] = 0;
+      }
+    }
+    
+    const nuevoResultado = await crearResultadoVocacional(usuarioId, datos);
+    
+    res.status(201).json({
+      exito: true,
+      data: nuevoResultado,
+      mensaje: 'Resultado vocacional creado exitosamente'
+    });
+  } catch (error) {
+    console.error('❌ Error en POST /vocacional/crear:', error);
+    res.status(500).json({
+      exito: false,
+      error: error.message || 'Error al crear resultado vocacional'
+    });
+  }
+});
+
+// DELETE /api/vocacional/:resultadoId - Eliminar resultado vocacional
+router.delete('/:resultadoId', autenticarUsuario, async (req, res) => {
+  try {
+    const { resultadoId } = req.params;
+    const usuarioId = req.usuario.id;
+    
+    console.log('🗑️ DELETE /vocacional/:resultadoId - Resultado ID:', resultadoId, 'Usuario ID:', usuarioId);
+    
+    if (!resultadoId) {
+      return res.status(400).json({
+        exito: false,
+        error: 'ID del resultado es requerido'
+      });
+    }
+    
+    const resultadoEliminado = await eliminarResultadoVocacional(resultadoId, usuarioId);
+    
+    res.json({
+      exito: true,
+      data: resultadoEliminado,
+      mensaje: 'Resultado vocacional eliminado exitosamente'
+    });
+  } catch (error) {
+    console.error('❌ Error en DELETE /vocacional/:resultadoId:', error);
+    const statusCode = error.message.includes('No tienes permiso') ? 403 : 
+                      error.message.includes('no encontrado') ? 404 : 500;
+    
+    res.status(statusCode).json({
+      exito: false,
+      error: error.message || 'Error al eliminar resultado vocacional'
+    });
+  }
+});
+
+// ==================== RESÚMENES COMPLETOS ====================
+
+// GET /api/vocacional/resumen - Resumen completo para el usuario actual
+router.get('/resumen', autenticarUsuario, async (req, res) => {
+  try {
+    const usuarioId = req.usuario.id;
+    
+    console.log('📋 GET /vocacional/resumen - Usuario ID:', usuarioId);
+    
+    // Obtener todo en paralelo para mejor rendimiento
+    const [ultimoResultado, estadisticas, topCarreras] = await Promise.all([
+      obtenerUltimoResultadoVocacional(usuarioId, usuarioId),
+      obtenerEstadisticasVocacionales(usuarioId, usuarioId),
+      obtenerTopCarreras(usuarioId, usuarioId, 5)
+    ]);
+    
+    const resumen = {
+      exito: true,
+      data: {
+        ultimo_resultado: ultimoResultado,
+        estadisticas: estadisticas,
+        top_carreras: topCarreras,
+        usuario: {
+          id: usuarioId,
+          es_propietario: true
+        },
+        timestamp: new Date().toISOString()
+      },
+      mensaje: 'Resumen vocacional obtenido exitosamente'
+    };
+    
+    res.json(resumen);
+  } catch (error) {
+    console.error('❌ Error en GET /vocacional/resumen:', error);
+    res.status(500).json({
+      exito: false,
+      error: error.message || 'Error al obtener resumen vocacional',
+      data: {
+        ultimo_resultado: null,
+        estadisticas: {
+          total_resultados: 0,
+          promedio_general: "0.00",
+          distribucion_zonas: [],
+          fecha_ultimo_resultado: null,
+          perfiles_promedio: {
+            tecnologico: "0.0",
+            cientifico: "0.0",
+            salud: "0.0",
+            administrativo: "0.0",
+            social: "0.0"
+          },
+          tiene_permiso: false
+        },
+        top_carreras: [],
+        usuario: {
+          id: req.usuario?.id || null,
+          es_propietario: true
+        }
+      }
+    });
+  }
+});
+
+// GET /api/vocacional/resumen/:usuarioId - Resumen completo para otro usuario
 router.get('/resumen/:usuarioId', autenticarUsuario, async (req, res) => {
   try {
     const { usuarioId } = req.params;
@@ -253,9 +490,9 @@ router.get('/resumen/:usuarioId', autenticarUsuario, async (req, res) => {
             fecha_ultimo_resultado: null,
             tiene_permiso: false
           },
-          permisos: {
-            ver_resultados: false,
-            ver_estadisticas: false,
+          top_carreras: [],
+          usuario: {
+            id: usuarioId,
             es_propietario: false
           }
         }
@@ -263,33 +500,56 @@ router.get('/resumen/:usuarioId', autenticarUsuario, async (req, res) => {
     }
 
     // Obtener todo en paralelo
-    const [ultimoResultado, estadisticas] = await Promise.all([
+    const [ultimoResultado, estadisticas, topCarreras] = await Promise.all([
       obtenerUltimoResultadoVocacional(usuarioId, usuarioActualId),
-      obtenerEstadisticasVocacionales(usuarioId, usuarioActualId)
+      obtenerEstadisticasVocacionales(usuarioId, usuarioActualId),
+      obtenerTopCarreras(usuarioId, usuarioActualId, 5)
     ]);
     
     const esPropietario = usuarioActualId === usuarioId;
     const tienePermisoVerResultados = ultimoResultado !== null || esPropietario;
     const tienePermisoVerEstadisticas = estadisticas.tiene_permiso !== false;
+    const tienePermisoVerCarreras = topCarreras.length > 0 || esPropietario;
     
-    res.json({ 
-      exito: true, 
+    const resumen = {
+      exito: true,
       data: {
-        ultimo_resultado: ultimoResultado,
-        estadisticas: estadisticas,
+        ultimo_resultado: tienePermisoVerResultados ? ultimoResultado : null,
+        estadisticas: tienePermisoVerEstadisticas ? estadisticas : {
+          total_resultados: 0,
+          promedio_general: "0.00",
+          distribucion_zonas: [],
+          fecha_ultimo_resultado: null,
+          perfiles_promedio: {
+            tecnologico: "0.0",
+            cientifico: "0.0",
+            salud: "0.0",
+            administrativo: "0.0",
+            social: "0.0"
+          },
+          tiene_permiso: false
+        },
+        top_carreras: tienePermisoVerCarreras ? topCarreras : [],
+        usuario: {
+          id: usuarioId,
+          es_propietario: esPropietario
+        },
         permisos: {
           ver_resultados: tienePermisoVerResultados,
           ver_estadisticas: tienePermisoVerEstadisticas,
-          es_propietario: esPropietario
-        }
+          ver_carreras: tienePermisoVerCarreras
+        },
+        timestamp: new Date().toISOString()
       },
       mensaje: 'Resumen vocacional obtenido exitosamente'
-    });
+    };
+    
+    res.json(resumen);
   } catch (error) {
     console.error('❌ Error en GET /vocacional/resumen/:usuarioId:', error);
-    res.status(500).json({ 
-      exito: false, 
-      error: 'Error al obtener resumen vocacional',
+    res.status(500).json({
+      exito: false,
+      error: error.message || 'Error al obtener resumen vocacional',
       data: {
         ultimo_resultado: null,
         estadisticas: {
@@ -299,9 +559,9 @@ router.get('/resumen/:usuarioId', autenticarUsuario, async (req, res) => {
           fecha_ultimo_resultado: null,
           tiene_permiso: false
         },
-        permisos: {
-          ver_resultados: false,
-          ver_estadisticas: false,
+        top_carreras: [],
+        usuario: {
+          id: req.params?.usuarioId || null,
           es_propietario: false
         }
       }
@@ -321,7 +581,19 @@ router.get('/ping', autenticarUsuario, (req, res) => {
       nombre_usuario: req.usuario.username,
       email: req.usuario.email
     },
+    version: '2.0.0',
     timestamp: new Date().toISOString()
+  });
+});
+
+// GET /api/vocacional/health - Health check
+router.get('/health', (req, res) => {
+  res.json({
+    exito: true,
+    servicio: 'vocacional',
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
   });
 });
 

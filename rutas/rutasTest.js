@@ -1,34 +1,43 @@
 import express from 'express';
 import { autenticarUsuario } from '../middleware/autenticacionMiddleware.js';
 import { 
-  obtenerResultadosTests, 
-  obtenerDetallesTest,
+  obtenerMisResultados,
+  obtenerResultadosUsuario,
   obtenerEstadisticasTests,
-  obtenerTestsDisponibles
+  obtenerTestsDisponibles,
+  obtenerDetallesTest,
+  registrarResultadoTest,
+  actualizarResultadoTest,
+  eliminarResultadoTest,
+  obtenerRankingPorTest
 } from '../controladores/testsControlador.js';
 
 const router = express.Router();
 
 // ==================== TESTS DISPONIBLES ====================
 
-// GET /api/tests/ - Obtener todos los tests disponibles (público)
+// GET /api/tests/ - Obtener todos los tests disponibles
 router.get('/', autenticarUsuario, async (req, res) => {
   try {
     console.log('📝 GET /tests/ - Usuario:', req.usuario.email);
     
-    const tests = await obtenerTestsDisponibles();
+    const resultado = await obtenerTestsDisponibles();
+    
+    if (!resultado.exito) {
+      return res.status(500).json(resultado);
+    }
     
     res.json({ 
       exito: true, 
-      data: tests,
-      mensaje: 'Tests obtenidos exitosamente',
-      total: tests.length
+      data: resultado.data,
+      mensaje: resultado.mensaje || 'Tests obtenidos exitosamente',
+      total: resultado.total || resultado.data.length
     });
   } catch (error) {
     console.error('❌ Error en GET /tests/:', error);
     res.status(500).json({ 
       exito: false, 
-      error: 'Error al obtener la lista de tests',
+      error: error.message || 'Error al obtener la lista de tests',
       data: []
     });
   }
@@ -42,20 +51,26 @@ router.get('/mis-resultados', autenticarUsuario, async (req, res) => {
     const usuarioId = req.usuario.id;
     console.log('📊 GET /tests/mis-resultados - Usuario ID:', usuarioId);
     
-    const resultados = await obtenerResultadosTests(usuarioId, usuarioId);
+    const resultado = await obtenerMisResultados(usuarioId);
+    
+    if (!resultado.exito) {
+      return res.status(500).json(resultado);
+    }
     
     res.json({ 
       exito: true, 
-      data: resultados,
-      mensaje: 'Resultados obtenidos exitosamente',
-      total: resultados.length
+      data: resultado.data,
+      mensaje: resultado.mensaje || 'Resultados obtenidos exitosamente',
+      total: resultado.total || resultado.data.length,
+      tiene_permiso: true
     });
   } catch (error) {
     console.error('❌ Error en GET /tests/mis-resultados:', error);
     res.status(500).json({ 
       exito: false, 
-      error: 'Error al obtener resultados',
-      data: []
+      error: error.message || 'Error al obtener resultados',
+      data: [],
+      tiene_permiso: false
     });
   }
 });
@@ -71,25 +86,34 @@ router.get('/resultados/:usuarioId', autenticarUsuario, async (req, res) => {
     if (!usuarioId) {
       return res.status(400).json({
         exito: false,
-        error: 'ID del usuario es requerido'
+        error: 'ID del usuario es requerido',
+        data: [],
+        tiene_permiso: false
       });
     }
 
-    const resultados = await obtenerResultadosTests(usuarioId, usuarioActualId);
+    const resultado = await obtenerResultadosUsuario(usuarioId, usuarioActualId);
+    
+    if (!resultado.exito) {
+      return res.status(resultado.data?.length === 0 ? 200 : 500).json(resultado);
+    }
+    
+    const tienePermiso = resultado.data.length > 0 || usuarioActualId === usuarioId;
     
     res.json({ 
       exito: true, 
-      data: resultados,
-      mensaje: 'Resultados obtenidos exitosamente',
-      total: resultados.length,
-      tiene_permiso: resultados.length > 0 || usuarioActualId === usuarioId
+      data: resultado.data,
+      mensaje: resultado.mensaje || 'Resultados obtenidos exitosamente',
+      total: resultado.total || resultado.data.length,
+      tiene_permiso: tienePermiso
     });
   } catch (error) {
     console.error('❌ Error en GET /tests/resultados/:usuarioId:', error);
     res.status(500).json({ 
       exito: false, 
-      error: 'Error al obtener resultados',
-      data: []
+      error: error.message || 'Error al obtener resultados',
+      data: [],
+      tiene_permiso: false
     });
   }
 });
@@ -102,18 +126,22 @@ router.get('/estadisticas', autenticarUsuario, async (req, res) => {
     const usuarioId = req.usuario.id;
     console.log('📈 GET /tests/estadisticas - Usuario ID:', usuarioId);
     
-    const estadisticas = await obtenerEstadisticasTests(usuarioId, usuarioId);
+    const resultado = await obtenerEstadisticasTests(usuarioId, usuarioId);
+    
+    if (!resultado.exito) {
+      return res.status(500).json(resultado);
+    }
     
     res.json({ 
       exito: true, 
-      data: estadisticas,
-      mensaje: 'Estadísticas obtenidas exitosamente'
+      data: resultado.data,
+      mensaje: resultado.mensaje || 'Estadísticas obtenidas exitosamente'
     });
   } catch (error) {
     console.error('❌ Error en GET /tests/estadisticas:', error);
     res.status(500).json({ 
       exito: false, 
-      error: 'Error al obtener estadísticas',
+      error: error.message || 'Error al obtener estadísticas',
       data: {
         total_tests: 0,
         promedio_general: 0,
@@ -136,22 +164,33 @@ router.get('/estadisticas/:usuarioId', autenticarUsuario, async (req, res) => {
     if (!usuarioId) {
       return res.status(400).json({
         exito: false,
-        error: 'ID del usuario es requerido'
+        error: 'ID del usuario es requerido',
+        data: {
+          total_tests: 0,
+          promedio_general: 0,
+          ultimo_test_fecha: null,
+          distribucion_tests: [],
+          tiene_permiso: false
+        }
       });
     }
 
-    const estadisticas = await obtenerEstadisticasTests(usuarioId, usuarioActualId);
+    const resultado = await obtenerEstadisticasTests(usuarioId, usuarioActualId);
+    
+    if (!resultado.exito) {
+      return res.status(500).json(resultado);
+    }
     
     res.json({ 
       exito: true, 
-      data: estadisticas,
-      mensaje: 'Estadísticas obtenidas exitosamente'
+      data: resultado.data,
+      mensaje: resultado.mensaje || 'Estadísticas obtenidas exitosamente'
     });
   } catch (error) {
     console.error('❌ Error en GET /tests/estadisticas/:usuarioId:', error);
     res.status(500).json({ 
       exito: false, 
-      error: 'Error al obtener estadísticas',
+      error: error.message || 'Error al obtener estadísticas',
       data: {
         total_tests: 0,
         promedio_general: 0,
@@ -165,7 +204,7 @@ router.get('/estadisticas/:usuarioId', autenticarUsuario, async (req, res) => {
 
 // ==================== DETALLES ESPECÍFICOS ====================
 
-// GET /api/tests/:testId - Obtener detalles de un test específico (público)
+// GET /api/tests/:testId - Obtener detalles de un test específico
 router.get('/detalle/:testId', autenticarUsuario, async (req, res) => {
   try {
     const { testId } = req.params;
@@ -174,30 +213,249 @@ router.get('/detalle/:testId', autenticarUsuario, async (req, res) => {
     if (!testId) {
       return res.status(400).json({
         exito: false,
-        error: 'ID del test es requerido'
+        error: 'ID del test es requerido',
+        data: null
       });
     }
 
-    const detallesTest = await obtenerDetallesTest(testId);
+    const resultado = await obtenerDetallesTest(testId);
+    
+    if (!resultado.exito) {
+      return res.status(500).json(resultado);
+    }
     
     res.json({ 
       exito: true, 
-      data: detallesTest,
-      mensaje: 'Detalles del test obtenidos exitosamente'
+      data: resultado.data,
+      mensaje: resultado.mensaje || 'Detalles del test obtenidos exitosamente'
     });
   } catch (error) {
     console.error('❌ Error en GET /tests/detalle/:testId:', error);
     res.status(500).json({ 
       exito: false, 
-      error: 'Error al obtener detalles del test',
+      error: error.message || 'Error al obtener detalles del test',
       data: null
     });
   }
 });
 
-// ==================== RUTAS PARA LA PANTALLA DE RESULTADOS ====================
+// ==================== CRUD RESULTADOS TESTS ====================
 
-// GET /api/tests/resumen/:usuarioId - Resumen completo para la pantalla de resultados
+// POST /api/tests/registrar - Registrar nuevo resultado de test
+router.post('/registrar', autenticarUsuario, async (req, res) => {
+  try {
+    const usuarioId = req.usuario.id;
+    const { testId, puntuacion, detalles } = req.body;
+    
+    console.log('📝 POST /tests/registrar - Usuario ID:', usuarioId, 'Test ID:', testId, 'Puntuación:', puntuacion);
+    
+    if (!testId || puntuacion === undefined) {
+      return res.status(400).json({
+        exito: false,
+        error: 'Los campos testId y puntuacion son requeridos',
+        data: null
+      });
+    }
+    
+    const resultado = await registrarResultadoTest(usuarioId, testId, puntuacion, detalles);
+    
+    if (!resultado.exito) {
+      return res.status(500).json(resultado);
+    }
+    
+    res.status(201).json({
+      exito: true,
+      data: resultado.data,
+      mensaje: resultado.mensaje || 'Resultado registrado exitosamente'
+    });
+  } catch (error) {
+    console.error('❌ Error en POST /tests/registrar:', error);
+    res.status(500).json({
+      exito: false,
+      error: error.message || 'Error al registrar resultado',
+      data: null
+    });
+  }
+});
+
+// PUT /api/tests/:resultadoId - Actualizar resultado existente
+router.put('/:resultadoId', autenticarUsuario, async (req, res) => {
+  try {
+    const { resultadoId } = req.params;
+    const usuarioId = req.usuario.id;
+    const datos = req.body;
+    
+    console.log('🔄 PUT /tests/:resultadoId - Resultado ID:', resultadoId, 'Usuario ID:', usuarioId);
+    
+    if (!resultadoId) {
+      return res.status(400).json({
+        exito: false,
+        error: 'ID del resultado es requerido'
+      });
+    }
+    
+    const resultado = await actualizarResultadoTest(resultadoId, usuarioId, datos);
+    
+    if (!resultado.exito) {
+      const statusCode = resultado.mensaje?.includes('No tienes permiso') ? 403 : 
+                        resultado.mensaje?.includes('no encontrado') ? 404 : 500;
+      return res.status(statusCode).json(resultado);
+    }
+    
+    res.json({
+      exito: true,
+      data: resultado.data,
+      mensaje: resultado.mensaje || 'Resultado actualizado exitosamente'
+    });
+  } catch (error) {
+    console.error('❌ Error en PUT /tests/:resultadoId:', error);
+    res.status(500).json({
+      exito: false,
+      error: error.message || 'Error al actualizar resultado'
+    });
+  }
+});
+
+// DELETE /api/tests/:resultadoId - Eliminar resultado de test
+router.delete('/:resultadoId', autenticarUsuario, async (req, res) => {
+  try {
+    const { resultadoId } = req.params;
+    const usuarioId = req.usuario.id;
+    
+    console.log('🗑️ DELETE /tests/:resultadoId - Resultado ID:', resultadoId, 'Usuario ID:', usuarioId);
+    
+    if (!resultadoId) {
+      return res.status(400).json({
+        exito: false,
+        error: 'ID del resultado es requerido'
+      });
+    }
+    
+    const resultado = await eliminarResultadoTest(resultadoId, usuarioId);
+    
+    if (!resultado.exito) {
+      const statusCode = resultado.mensaje?.includes('No tienes permiso') ? 403 : 
+                        resultado.mensaje?.includes('no encontrado') ? 404 : 500;
+      return res.status(statusCode).json(resultado);
+    }
+    
+    res.json({
+      exito: true,
+      data: resultado.data,
+      mensaje: resultado.mensaje || 'Resultado eliminado exitosamente'
+    });
+  } catch (error) {
+    console.error('❌ Error en DELETE /tests/:resultadoId:', error);
+    res.status(500).json({
+      exito: false,
+      error: error.message || 'Error al eliminar resultado'
+    });
+  }
+});
+
+// ==================== RANKINGS ====================
+
+// GET /api/tests/:testId/ranking - Obtener ranking por test
+router.get('/:testId/ranking', autenticarUsuario, async (req, res) => {
+  try {
+    const { testId } = req.params;
+    const limite = req.query.limite ? parseInt(req.query.limite) : 10;
+    
+    console.log('🏆 GET /tests/:testId/ranking - Test ID:', testId, 'Límite:', limite);
+    
+    if (!testId) {
+      return res.status(400).json({
+        exito: false,
+        error: 'ID del test es requerido',
+        data: []
+      });
+    }
+    
+    const resultado = await obtenerRankingPorTest(testId, limite);
+    
+    if (!resultado.exito) {
+      return res.status(500).json(resultado);
+    }
+    
+    res.json({
+      exito: true,
+      data: resultado.data,
+      mensaje: resultado.mensaje || 'Ranking obtenido exitosamente',
+      total: resultado.total
+    });
+  } catch (error) {
+    console.error('❌ Error en GET /tests/:testId/ranking:', error);
+    res.status(500).json({
+      exito: false,
+      error: error.message || 'Error al obtener ranking',
+      data: []
+    });
+  }
+});
+
+// ==================== RESÚMENES COMPLETOS ====================
+
+// GET /api/tests/resumen - Resumen completo para el usuario actual
+router.get('/resumen', autenticarUsuario, async (req, res) => {
+  try {
+    const usuarioId = req.usuario.id;
+    
+    console.log('📋 GET /tests/resumen - Usuario ID:', usuarioId);
+    
+    // Obtener todo en paralelo para mejor rendimiento
+    const [resultados, estadisticas, tests] = await Promise.all([
+      obtenerMisResultados(usuarioId),
+      obtenerEstadisticasTests(usuarioId, usuarioId),
+      obtenerTestsDisponibles()
+    ]);
+    
+    const resumen = {
+      exito: true,
+      data: {
+        resultados: resultados.exito ? resultados.data : [],
+        estadisticas: estadisticas.exito ? estadisticas.data : {
+          total_tests: 0,
+          promedio_general: 0,
+          ultimo_test_fecha: null,
+          distribucion_tests: [],
+          tiene_permiso: false
+        },
+        tests_disponibles: tests.exito ? tests.data : [],
+        usuario: {
+          id: usuarioId,
+          es_propietario: true
+        },
+        timestamp: new Date().toISOString()
+      },
+      mensaje: 'Resumen de tests obtenido exitosamente'
+    };
+    
+    res.json(resumen);
+  } catch (error) {
+    console.error('❌ Error en GET /tests/resumen:', error);
+    res.status(500).json({
+      exito: false,
+      error: error.message || 'Error al obtener resumen de tests',
+      data: {
+        resultados: [],
+        estadisticas: {
+          total_tests: 0,
+          promedio_general: 0,
+          ultimo_test_fecha: null,
+          distribucion_tests: [],
+          tiene_permiso: false
+        },
+        tests_disponibles: [],
+        usuario: {
+          id: req.usuario?.id || null,
+          es_propietario: true
+        }
+      }
+    });
+  }
+});
+
+// GET /api/tests/resumen/:usuarioId - Resumen completo para otro usuario
 router.get('/resumen/:usuarioId', autenticarUsuario, async (req, res) => {
   try {
     const { usuarioId } = req.params;
@@ -208,38 +466,71 @@ router.get('/resumen/:usuarioId', autenticarUsuario, async (req, res) => {
     if (!usuarioId) {
       return res.status(400).json({
         exito: false,
-        error: 'ID del usuario es requerido'
+        error: 'ID del usuario es requerido',
+        data: {
+          resultados: [],
+          estadisticas: {
+            total_tests: 0,
+            promedio_general: 0,
+            ultimo_test_fecha: null,
+            distribucion_tests: [],
+            tiene_permiso: false
+          },
+          tests_disponibles: [],
+          usuario: {
+            id: usuarioId,
+            es_propietario: false
+          }
+        }
       });
     }
 
     // Obtener todo en paralelo
     const [resultados, estadisticas] = await Promise.all([
-      obtenerResultadosTests(usuarioId, usuarioActualId),
+      obtenerResultadosUsuario(usuarioId, usuarioActualId),
       obtenerEstadisticasTests(usuarioId, usuarioActualId)
     ]);
     
-    // Verificar permisos
-    const tienePermisoVerResultados = resultados.length > 0 || usuarioActualId === usuarioId;
-    const tienePermisoVerEstadisticas = estadisticas.tiene_permiso !== false;
+    const esPropietario = usuarioActualId === usuarioId;
+    const tienePermisoVerResultados = (resultados.exito && resultados.data.length > 0) || esPropietario;
+    const tienePermisoVerEstadisticas = (estadisticas.exito && estadisticas.data.tiene_permiso !== false) || esPropietario;
     
-    res.json({ 
-      exito: true, 
+    const resumen = {
+      exito: true,
       data: {
-        resultados: resultados,
-        estadisticas: estadisticas,
+        resultados: tienePermisoVerResultados ? (resultados.exito ? resultados.data : []) : [],
+        estadisticas: tienePermisoVerEstadisticas ? (estadisticas.exito ? estadisticas.data : {
+          total_tests: 0,
+          promedio_general: 0,
+          ultimo_test_fecha: null,
+          distribucion_tests: [],
+          tiene_permiso: false
+        }) : {
+          total_tests: 0,
+          promedio_general: 0,
+          ultimo_test_fecha: null,
+          distribucion_tests: [],
+          tiene_permiso: false
+        },
+        usuario: {
+          id: usuarioId,
+          es_propietario: esPropietario
+        },
         permisos: {
           ver_resultados: tienePermisoVerResultados,
-          ver_estadisticas: tienePermisoVerEstadisticas,
-          es_propietario: usuarioActualId === usuarioId
-        }
+          ver_estadisticas: tienePermisoVerEstadisticas
+        },
+        timestamp: new Date().toISOString()
       },
-      mensaje: 'Resumen obtenido exitosamente'
-    });
+      mensaje: 'Resumen de tests obtenido exitosamente'
+    };
+    
+    res.json(resumen);
   } catch (error) {
     console.error('❌ Error en GET /tests/resumen/:usuarioId:', error);
-    res.status(500).json({ 
-      exito: false, 
-      error: 'Error al obtener resumen de resultados',
+    res.status(500).json({
+      exito: false,
+      error: error.message || 'Error al obtener resumen de tests',
       data: {
         resultados: [],
         estadisticas: {
@@ -249,9 +540,8 @@ router.get('/resumen/:usuarioId', autenticarUsuario, async (req, res) => {
           distribucion_tests: [],
           tiene_permiso: false
         },
-        permisos: {
-          ver_resultados: false,
-          ver_estadisticas: false,
+        usuario: {
+          id: req.params?.usuarioId || null,
           es_propietario: false
         }
       }
@@ -259,7 +549,7 @@ router.get('/resumen/:usuarioId', autenticarUsuario, async (req, res) => {
   }
 });
 
-// ==================== RUTA DE PRUEBA ====================
+// ==================== RUTAS DE UTILIDAD ====================
 
 // GET /api/tests/ping - Endpoint de prueba
 router.get('/ping', autenticarUsuario, (req, res) => {
@@ -268,9 +558,22 @@ router.get('/ping', autenticarUsuario, (req, res) => {
     mensaje: 'Servicio de tests funcionando',
     usuario: {
       id: req.usuario.id,
-      nombre_usuario: req.usuario.username
+      nombre_usuario: req.usuario.username,
+      email: req.usuario.email
     },
+    version: '2.0.0',
     timestamp: new Date().toISOString()
+  });
+});
+
+// GET /api/tests/health - Health check
+router.get('/health', (req, res) => {
+  res.json({
+    exito: true,
+    servicio: 'tests',
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
   });
 });
 
