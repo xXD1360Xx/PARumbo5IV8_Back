@@ -1,5 +1,10 @@
+// En configuracion/cloudinary.js - REEMPLAZA LA IMPORTACIÓN
+
 import { v2 as cloudinary } from 'cloudinary';
 import dotenv from 'dotenv';
+import multer from 'multer';
+// Cambia esta importación:
+import MulterStorageCloudinary from 'multer-storage-cloudinary';
 
 dotenv.config();
 
@@ -11,33 +16,29 @@ cloudinary.config({
   secure: true
 });
 
-// Configuración para Multer (subida de archivos)
-import multer from 'multer';
-import { CloudinaryStorage } from 'multer-storage-cloudinary';
-
 // Configurar almacenamiento en Cloudinary
-const storage = new CloudinaryStorage({
+const storage = new MulterStorageCloudinary.CloudinaryStorage({
   cloudinary: cloudinary,
   params: async (req, file) => {
     // Determinar carpeta según tipo de imagen
     let folder;
-    if (file.fieldname === 'avatar') {
+    if (file.fieldname === 'imagen') {
+      folder = 'perfiles/general';
+    } else if (file.fieldname === 'avatar') {
       folder = 'perfiles/avatars';
     } else if (file.fieldname === 'banner') {
       folder = 'perfiles/banners';
     } else {
-      folder = 'perfiles/general';
+      folder = 'perfiles/otros';
     }
     
     return {
       folder: folder,
       allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
       transformation: [
-        // Optimización automática
         { quality: 'auto' },
         { fetch_format: 'auto' }
       ],
-      // Generar ID único para la imagen
       public_id: `${Date.now()}_${Math.random().toString(36).substring(7)}`
     };
   }
@@ -49,7 +50,6 @@ const upload = multer({
     fileSize: 5 * 1024 * 1024 // 5MB límite
   },
   fileFilter: (req, file, cb) => {
-    // Validar tipo de archivo
     const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
     if (allowedTypes.includes(file.mimetype)) {
       cb(null, true);
