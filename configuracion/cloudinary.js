@@ -17,6 +17,12 @@ cloudinary.config({
   secure: true
 });
 
+console.log('☁️ Cloudinary config:', {
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME ? `✅ ${process.env.CLOUDINARY_CLOUD_NAME.substring(0, 6)}...` : '❌ NO HAY',
+  api_key: process.env.CLOUDINARY_API_KEY ? `✅ ${process.env.CLOUDINARY_API_KEY.length} dígitos` : '❌ NO HAY',
+  api_secret: process.env.CLOUDINARY_API_SECRET ? `✅ ${process.env.CLOUDINARY_API_SECRET.substring(0, 6)}... (${process.env.CLOUDINARY_API_SECRET.length} chars)` : '❌ NO HAY'
+});
+
 // Configuración de Multer para almacenamiento temporal
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
