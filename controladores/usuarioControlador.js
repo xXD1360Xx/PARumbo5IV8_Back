@@ -2,20 +2,14 @@ import { pool } from '../configuracion/basedeDatos.js';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path'; 
-
-console.log('🔄 IMPORTANDO MÓDULO CLOUDINARY...');
 import * as cloudinaryModule from '../configuracion/cloudinary.js';
 
+console.log('🔄 IMPORTANDO MÓDULO CLOUDINARY...');
 const { subirACloudinary, eliminarDeCloudinary, extraerPublicId } = cloudinaryModule;
 
 console.log('✅ Módulo Cloudinary importado:', {
   funciones: Object.keys(cloudinaryModule)
 });
-
-// Verificar que fs esté disponible
-console.log('📁 fs module available:', typeof fs === 'object' ? '✅ Yes' : '❌ No');
-console.log('📁 fs.existsSync available:', typeof fs.existsSync === 'function' ? '✅ Yes' : '❌ No');
-
 // ==================== FUNCIONES DE BÚSQUEDA Y SEGUIMIENTO ====================
 
 /**
