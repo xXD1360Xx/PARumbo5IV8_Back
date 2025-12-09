@@ -1,7 +1,20 @@
 import { pool } from '../configuracion/basedeDatos.js';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path'; 
+
+console.log('🔄 IMPORTANDO MÓDULO CLOUDINARY...');
 import * as cloudinaryModule from '../configuracion/cloudinary.js';
+
 const { subirACloudinary, eliminarDeCloudinary, extraerPublicId } = cloudinaryModule;
+
+console.log('✅ Módulo Cloudinary importado:', {
+  funciones: Object.keys(cloudinaryModule)
+});
+
+// Verificar que fs esté disponible
+console.log('📁 fs module available:', typeof fs === 'object' ? '✅ Yes' : '❌ No');
+console.log('📁 fs.existsSync available:', typeof fs.existsSync === 'function' ? '✅ Yes' : '❌ No');
 
 // ==================== FUNCIONES DE BÚSQUEDA Y SEGUIMIENTO ====================
 
@@ -1024,6 +1037,9 @@ export const buscarUsuariosPorRol = async (rol, usuarioActualId = null, pagina =
 
 // ==================== FUNCIONES DE CLOUDINARY ====================
 
+/**
+ * Subir foto de perfil CON MANEJO DE ERRORES MEJORADO
+ */
 export const subirFotoPerfil = async (usuarioId, filePath) => {
   const inicio = Date.now();
   console.log(`🚀 [SUBIENDO PERFIL] Iniciando proceso...`);
@@ -1047,12 +1063,20 @@ export const subirFotoPerfil = async (usuarioId, filePath) => {
     
     console.log(`✅ Usuario existe. Avatar actual: ${esAvatarPorDefecto ? 'Por defecto' : 'Personalizado'}`);
     
-    // 2. Verificar que el archivo existe
-    console.log(`🔍 [PASO 2] Verificando archivo temporal...`);
+    // 2. Verificar que el archivo existe usando fs
+    console.log(`🔍 [PASO 2] Verificando archivo temporal con fs...`);
+    
+    // PRIMERO: Verifica que fs esté disponible
+    if (!fs || typeof fs.existsSync !== 'function') {
+      throw new Error('El módulo fs no está disponible');
+    }
+    
+    // SEGUNDO: Verifica si el archivo existe
     if (!fs.existsSync(filePath)) {
       throw new Error(`Archivo temporal no encontrado: ${filePath}`);
     }
     
+    // TERCERO: Obtener estadísticas del archivo
     const stats = fs.statSync(filePath);
     console.log(`✅ Archivo válido. Tamaño: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
     
@@ -1147,22 +1171,34 @@ export const subirFotoPerfil = async (usuarioId, filePath) => {
     console.error(`   👤 Usuario ID: ${usuarioId}`);
     console.error(`   📁 Ruta archivo: ${filePath}`);
     console.error(`   ❌ Error: ${error.message}`);
-    console.error(`   🔍 Stack:`, error.stack);
     
-    // Limpieza en caso de error
-    try {
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-        console.log(`🧹 Archivo temporal limpiado: ${filePath}`);
+    // Información de debug sobre fs
+    console.error(`   🔍 fs disponible: ${typeof fs === 'object' ? 'Sí' : 'No'}`);
+    console.error(`   🔍 fs.existsSync: ${typeof fs.existsSync === 'function' ? 'Sí' : 'No'}`);
+    
+    if (error.stack) {
+      console.error(`   🔍 Stack: ${error.stack.split('\n')[0]}`); // Solo primera línea del stack
+    }
+    
+    // Limpieza en caso de error (solo si fs está disponible)
+    if (fs && typeof fs.existsSync === 'function') {
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+          console.log(`🧹 Archivo temporal limpiado: ${filePath}`);
+        }
+      } catch (cleanupError) {
+        console.warn(`⚠️ No se pudo limpiar archivo temporal: ${cleanupError.message}`);
       }
-    } catch (cleanupError) {
-      console.warn(`⚠️ No se pudo limpiar archivo temporal: ${cleanupError.message}`);
     }
     
     throw new Error(`Error al subir foto de perfil: ${error.message}`);
   }
 };
 
+/**
+ * Subir foto de portada CON MANEJO DE ERRORES MEJORADO
+ */
 export const subirFotoPortada = async (usuarioId, filePath) => {
   const inicio = Date.now();
   console.log(`🚀 [SUBIENDO PORTADA] Iniciando proceso...`);
@@ -1183,12 +1219,20 @@ export const subirFotoPortada = async (usuarioId, filePath) => {
     const bannerActual = usuarioCheckResult.rows[0].banner_url;
     console.log(`✅ Usuario existe. Banner actual: ${bannerActual || 'Ninguno'}`);
     
-    // 2. Verificar que el archivo existe
-    console.log(`🔍 [PASO 2] Verificando archivo temporal...`);
+    // 2. Verificar que el archivo existe usando fs
+    console.log(`🔍 [PASO 2] Verificando archivo temporal con fs...`);
+    
+    // PRIMERO: Verifica que fs esté disponible
+    if (!fs || typeof fs.existsSync !== 'function') {
+      throw new Error('El módulo fs no está disponible');
+    }
+    
+    // SEGUNDO: Verifica si el archivo existe
     if (!fs.existsSync(filePath)) {
       throw new Error(`Archivo temporal no encontrado: ${filePath}`);
     }
     
+    // TERCERO: Obtener estadísticas del archivo
     const stats = fs.statSync(filePath);
     console.log(`✅ Archivo válido. Tamaño: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
     
@@ -1282,16 +1326,25 @@ export const subirFotoPortada = async (usuarioId, filePath) => {
     console.error(`   👤 Usuario ID: ${usuarioId}`);
     console.error(`   📁 Ruta archivo: ${filePath}`);
     console.error(`   ❌ Error: ${error.message}`);
-    console.error(`   🔍 Stack:`, error.stack);
     
-    // Limpieza en caso de error
-    try {
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-        console.log(`🧹 Archivo temporal limpiado: ${filePath}`);
+    // Información de debug sobre fs
+    console.error(`   🔍 fs disponible: ${typeof fs === 'object' ? 'Sí' : 'No'}`);
+    console.error(`   🔍 fs.existsSync: ${typeof fs.existsSync === 'function' ? 'Sí' : 'No'}`);
+    
+    if (error.stack) {
+      console.error(`   🔍 Stack: ${error.stack.split('\n')[0]}`);
+    }
+    
+    // Limpieza en caso de error (solo si fs está disponible)
+    if (fs && typeof fs.existsSync === 'function') {
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+          console.log(`🧹 Archivo temporal limpiado: ${filePath}`);
+        }
+      } catch (cleanupError) {
+        console.warn(`⚠️ No se pudo limpiar archivo temporal: ${cleanupError.message}`);
       }
-    } catch (cleanupError) {
-      console.warn(`⚠️ No se pudo limpiar archivo temporal: ${cleanupError.message}`);
     }
     
     throw new Error(`Error al subir foto de portada: ${error.message}`);
