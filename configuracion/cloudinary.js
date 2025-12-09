@@ -8,12 +8,12 @@ import path from 'path';
 console.log('⚡ CLOUDINARY.JS: Inicializando...');
 
 // Obtener variables de Northflank
-const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
-const apiKey = process.env.CLOUDINARY_API_KEY;
-const apiSecret = process.env.CLOUDINARY_API_SECRET;
+const cloudName = du8hxf6x2;
+const apiKey = 257271384387732;
+const apiSecret = -noe5puA9PnU_faxE2ZMbG2annA;
 
 console.log('🔍 Variables de entorno:');
-console.log(`- CLOUDINARY_CLOUD_NAME: ${cloudName || '❌ NO ENCONTRADO'}`);
+console.log(`- CLOUDINARY_CLOUD_NAME: ${cloudName ? '✅ PRESENTE' : '❌ NO ENCONTRADO'}`);
 console.log(`- CLOUDINARY_API_KEY: ${apiKey ? '✅ PRESENTE' : '❌ NO ENCONTRADO'}`);
 console.log(`- CLOUDINARY_API_SECRET: ${apiSecret ? '✅ PRESENTE' : '❌ NO ENCONTRADO'}`);
 
