@@ -1024,17 +1024,69 @@ export const buscarUsuariosPorRol = async (rol, usuarioActualId = null, pagina =
 
 // ==================== FUNCIONES DE CLOUDINARY ====================
 
-/**
- * Subir foto de perfil
- */
 export const subirFotoPerfil = async (usuarioId, filePath) => {
+  const inicio = Date.now();
+  console.log(`🚀 [SUBIENDO PERFIL] Iniciando proceso...`);
+  console.log(`   👤 Usuario ID: ${usuarioId}`);
+  console.log(`   📁 Ruta archivo: ${filePath}`);
+  
   try {
-    console.log('📸 [CLOUDINARY] Subiendo foto de perfil para usuario ID:', usuarioId);
+    // 1. Verificar que el usuario existe
+    console.log(`🔍 [PASO 1] Verificando existencia de usuario ${usuarioId}...`);
+    const usuarioCheckQuery = `SELECT id, avatar_url FROM _users WHERE id = $1`;
+    const usuarioCheckResult = await pool.query(usuarioCheckQuery, [usuarioId]);
     
-    // Subir a Cloudinary
+    if (usuarioCheckResult.rows.length === 0) {
+      console.error(`❌ Usuario ${usuarioId} no encontrado en BD`);
+      throw new Error('Usuario no encontrado');
+    }
+    
+    const avatarActual = usuarioCheckResult.rows[0].avatar_url;
+    const defaultAvatar = 'https://res.cloudinary.com/de8qn7bm1/image/upload/v1762320292/Default_pfp.svg_j0obpx.png';
+    const esAvatarPorDefecto = avatarActual === defaultAvatar || !avatarActual;
+    
+    console.log(`✅ Usuario existe. Avatar actual: ${esAvatarPorDefecto ? 'Por defecto' : 'Personalizado'}`);
+    
+    // 2. Verificar que el archivo existe
+    console.log(`🔍 [PASO 2] Verificando archivo temporal...`);
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`Archivo temporal no encontrado: ${filePath}`);
+    }
+    
+    const stats = fs.statSync(filePath);
+    console.log(`✅ Archivo válido. Tamaño: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
+    
+    // 3. Si hay avatar actual y NO es el por defecto, eliminar de Cloudinary
+    if (avatarActual && !esAvatarPorDefecto && avatarActual.includes('cloudinary.com')) {
+      console.log(`🗑️ [PASO 3] Eliminando avatar anterior de Cloudinary...`);
+      const publicIdAnterior = extraerPublicId(avatarActual);
+      
+      if (publicIdAnterior) {
+        try {
+          await eliminarDeCloudinary(publicIdAnterior);
+          console.log(`✅ Avatar anterior eliminado: ${publicIdAnterior}`);
+        } catch (error) {
+          console.warn(`⚠️ No se pudo eliminar avatar anterior (continuando): ${error.message}`);
+        }
+      }
+    }
+    
+    // 4. Subir nuevo avatar a Cloudinary
+    console.log(`☁️ [PASO 4] Subiendo a Cloudinary...`);
+    const cloudinaryInicio = Date.now();
+    
     const cloudinaryResult = await subirACloudinary(filePath, 'avatar');
     
-    // Actualizar en base de datos
+    const cloudinaryTiempo = Date.now() - cloudinaryInicio;
+    console.log(`✅ Cloudinary upload exitoso (${cloudinaryTiempo}ms):`);
+    console.log(`   🔗 URL: ${cloudinaryResult.url}`);
+    console.log(`   🆔 Public ID: ${cloudinaryResult.public_id}`);
+    console.log(`   📐 Dimensiones: ${cloudinaryResult.width}x${cloudinaryResult.height}`);
+    
+    // 5. Actualizar en base de datos
+    console.log(`💾 [PASO 5] Actualizando base de datos...`);
+    const dbInicio = Date.now();
+    
     const query = `
       UPDATE _users 
       SET avatar_url = $1, updated_at = NOW()
@@ -1055,35 +1107,122 @@ export const subirFotoPerfil = async (usuarioId, filePath) => {
     `;
 
     const result = await pool.query(query, [cloudinaryResult.url, usuarioId]);
-
+    
     if (result.rows.length === 0) {
-      throw new Error('Usuario no encontrado');
+      throw new Error('Usuario no encontrado al actualizar');
     }
-
+    
+    const dbTiempo = Date.now() - dbInicio;
+    console.log(`✅ Base de datos actualizada (${dbTiempo}ms)`);
+    
+    const usuarioActualizado = result.rows[0];
+    
+    // 6. Log exitoso completo
+    const tiempoTotal = Date.now() - inicio;
+    console.log(`🎉 [PERFIL SUBIDO] Proceso completado exitosamente en ${tiempoTotal}ms`);
+    console.log(`   👤 Usuario: ${usuarioActualizado.nombre_usuario}`);
+    console.log(`   🖼️ Nuevo avatar: ${usuarioActualizado.foto_perfil}`);
+    console.log(`   📏 Dimensiones finales: ${cloudinaryResult.width}x${cloudinaryResult.height}`);
+    
     return {
       exito: true,
-      usuario: result.rows[0],
+      mensaje: 'Foto de perfil actualizada exitosamente',
+      usuario: usuarioActualizado,
       url: cloudinaryResult.url,
-      public_id: cloudinaryResult.public_id
+      public_id: cloudinaryResult.public_id,
+      metadata: {
+        width: cloudinaryResult.width,
+        height: cloudinaryResult.height,
+        size_kb: Math.round(cloudinaryResult.bytes / 1024),
+        format: cloudinaryResult.format,
+        tiempo_total_ms: tiempoTotal,
+        reemplazo: esAvatarPorDefecto ? 'avatar_por_defecto' : 'avatar_personalizado'
+      }
     };
 
   } catch (error) {
-    console.error('❌ Error en subirFotoPerfil:', error);
+    // Log de error detallado
+    const tiempoTotal = Date.now() - inicio;
+    console.error(`💥 [ERROR SUBIENDO PERFIL] Falló después de ${tiempoTotal}ms`);
+    console.error(`   👤 Usuario ID: ${usuarioId}`);
+    console.error(`   📁 Ruta archivo: ${filePath}`);
+    console.error(`   ❌ Error: ${error.message}`);
+    console.error(`   🔍 Stack:`, error.stack);
+    
+    // Limpieza en caso de error
+    try {
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+        console.log(`🧹 Archivo temporal limpiado: ${filePath}`);
+      }
+    } catch (cleanupError) {
+      console.warn(`⚠️ No se pudo limpiar archivo temporal: ${cleanupError.message}`);
+    }
+    
     throw new Error(`Error al subir foto de perfil: ${error.message}`);
   }
 };
 
-/**
- * Subir foto de portada
- */
 export const subirFotoPortada = async (usuarioId, filePath) => {
+  const inicio = Date.now();
+  console.log(`🚀 [SUBIENDO PORTADA] Iniciando proceso...`);
+  console.log(`   👤 Usuario ID: ${usuarioId}`);
+  console.log(`   📁 Ruta archivo: ${filePath}`);
+  
   try {
-    console.log('🌅 [CLOUDINARY] Subiendo foto de portada para usuario ID:', usuarioId);
+    // 1. Verificar que el usuario existe antes de hacer cualquier cosa
+    console.log(`🔍 [PASO 1] Verificando existencia de usuario ${usuarioId}...`);
+    const usuarioCheckQuery = `SELECT id, banner_url FROM _users WHERE id = $1`;
+    const usuarioCheckResult = await pool.query(usuarioCheckQuery, [usuarioId]);
     
-    // Subir a Cloudinary
+    if (usuarioCheckResult.rows.length === 0) {
+      console.error(`❌ Usuario ${usuarioId} no encontrado en BD`);
+      throw new Error('Usuario no encontrado');
+    }
+    
+    const bannerActual = usuarioCheckResult.rows[0].banner_url;
+    console.log(`✅ Usuario existe. Banner actual: ${bannerActual || 'Ninguno'}`);
+    
+    // 2. Verificar que el archivo existe
+    console.log(`🔍 [PASO 2] Verificando archivo temporal...`);
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`Archivo temporal no encontrado: ${filePath}`);
+    }
+    
+    const stats = fs.statSync(filePath);
+    console.log(`✅ Archivo válido. Tamaño: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
+    
+    // 3. Si hay banner actual, eliminar de Cloudinary primero
+    if (bannerActual && bannerActual.includes('cloudinary.com')) {
+      console.log(`🗑️ [PASO 3] Eliminando banner anterior de Cloudinary...`);
+      const publicIdAnterior = extraerPublicId(bannerActual);
+      
+      if (publicIdAnterior) {
+        try {
+          await eliminarDeCloudinary(publicIdAnterior);
+          console.log(`✅ Banner anterior eliminado: ${publicIdAnterior}`);
+        } catch (error) {
+          console.warn(`⚠️ No se pudo eliminar banner anterior (continuando): ${error.message}`);
+        }
+      }
+    }
+    
+    // 4. Subir nuevo banner a Cloudinary
+    console.log(`☁️ [PASO 4] Subiendo a Cloudinary...`);
+    const cloudinaryInicio = Date.now();
+    
     const cloudinaryResult = await subirACloudinary(filePath, 'banner');
     
-    // Actualizar en base de datos
+    const cloudinaryTiempo = Date.now() - cloudinaryInicio;
+    console.log(`✅ Cloudinary upload exitoso (${cloudinaryTiempo}ms):`);
+    console.log(`   🔗 URL: ${cloudinaryResult.url}`);
+    console.log(`   🆔 Public ID: ${cloudinaryResult.public_id}`);
+    console.log(`   📐 Dimensiones: ${cloudinaryResult.width}x${cloudinaryResult.height}`);
+    
+    // 5. Actualizar en base de datos
+    console.log(`💾 [PASO 5] Actualizando base de datos...`);
+    const dbInicio = Date.now();
+    
     const query = `
       UPDATE _users 
       SET banner_url = $1, updated_at = NOW()
@@ -1104,20 +1243,57 @@ export const subirFotoPortada = async (usuarioId, filePath) => {
     `;
 
     const result = await pool.query(query, [cloudinaryResult.url, usuarioId]);
-
+    
     if (result.rows.length === 0) {
-      throw new Error('Usuario no encontrado');
+      throw new Error('Usuario no encontrado al actualizar');
     }
-
+    
+    const dbTiempo = Date.now() - dbInicio;
+    console.log(`✅ Base de datos actualizada (${dbTiempo}ms)`);
+    
+    const usuarioActualizado = result.rows[0];
+    
+    // 6. Log exitoso completo
+    const tiempoTotal = Date.now() - inicio;
+    console.log(`🎉 [PORTADA SUBIDA] Proceso completado exitosamente en ${tiempoTotal}ms`);
+    console.log(`   👤 Usuario: ${usuarioActualizado.nombre_usuario}`);
+    console.log(`   🖼️ Nuevo banner: ${usuarioActualizado.portada}`);
+    console.log(`   📏 Dimensiones finales: ${cloudinaryResult.width}x${cloudinaryResult.height}`);
+    
     return {
       exito: true,
-      usuario: result.rows[0],
+      mensaje: 'Foto de portada actualizada exitosamente',
+      usuario: usuarioActualizado,
       url: cloudinaryResult.url,
-      public_id: cloudinaryResult.public_id
+      public_id: cloudinaryResult.public_id,
+      metadata: {
+        width: cloudinaryResult.width,
+        height: cloudinaryResult.height,
+        size_kb: Math.round(cloudinaryResult.bytes / 1024),
+        format: cloudinaryResult.format,
+        tiempo_total_ms: tiempoTotal
+      }
     };
 
   } catch (error) {
-    console.error('❌ Error en subirFotoPortada:', error);
+    // Log de error detallado
+    const tiempoTotal = Date.now() - inicio;
+    console.error(`💥 [ERROR SUBIENDO PORTADA] Falló después de ${tiempoTotal}ms`);
+    console.error(`   👤 Usuario ID: ${usuarioId}`);
+    console.error(`   📁 Ruta archivo: ${filePath}`);
+    console.error(`   ❌ Error: ${error.message}`);
+    console.error(`   🔍 Stack:`, error.stack);
+    
+    // Limpieza en caso de error
+    try {
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+        console.log(`🧹 Archivo temporal limpiado: ${filePath}`);
+      }
+    } catch (cleanupError) {
+      console.warn(`⚠️ No se pudo limpiar archivo temporal: ${cleanupError.message}`);
+    }
+    
     throw new Error(`Error al subir foto de portada: ${error.message}`);
   }
 };
