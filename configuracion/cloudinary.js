@@ -8,9 +8,9 @@ import path from 'path';
 console.log('⚡ CLOUDINARY.JS: Inicializando...');
 
 // Obtener variables de Northflank
-const cloudName = du8hxf6x2;
-const apiKey = 257271384387732;
-const apiSecret = -noe5puA9PnU_faxE2ZMbG2annA;
+const cloudName = 'du8hxf6x2';
+const apiKey = '257271384387732';
+const apiSecret = '-noe5puA9PnU_faxE2ZMbG2annA';
 
 console.log('🔍 Variables de entorno:');
 console.log(`- CLOUDINARY_CLOUD_NAME: ${cloudName ? '✅ PRESENTE' : '❌ NO ENCONTRADO'}`);
