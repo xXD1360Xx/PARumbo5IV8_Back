@@ -4,6 +4,34 @@ import fs from 'fs';
 import { promisify } from 'util';
 import path from 'path';
 
+// ========== FUNCIÓN DE INICIALIZACIÓN QUE SE EJECUTA INMEDIATAMENTE ==========
+(function initializeCloudinary() {
+  console.log('🚀 ========== CLOUDINARY.JS SE ESTÁ EJECUTANDO ==========');
+  console.log('🕒 Timestamp:', new Date().toISOString());
+  console.log('📁 Directorio actual:', __dirname);
+  
+  // Verificar variables
+  console.log('🔍 Variables CLOUDINARY en process.env:');
+  console.log('CLOUDINARY_CLOUD_NAME:', process.env.CLOUDINARY_CLOUD_NAME || '❌ NO ENCONTRADO');
+  console.log('CLOUDINARY_API_KEY:', process.env.CLOUDINARY_API_KEY 
+    ? `✅ ${process.env.CLOUDINARY_API_KEY.substring(0, 6)}... (${process.env.CLOUDINARY_API_KEY.length} chars)` 
+    : '❌ NO ENCONTRADO');
+  console.log('CLOUDINARY_API_SECRET:', process.env.CLOUDINARY_API_SECRET 
+    ? `✅ ${process.env.CLOUDINARY_API_SECRET.substring(0, 6)}... (${process.env.CLOUDINARY_API_SECRET.length} chars)` 
+    : '❌ NO ENCONTRADO');
+  
+  // Configurar Cloudinary
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+    secure: true
+  });
+  
+  console.log('✅ Cloudinary configurado:', cloudinary.config().cloud_name || 'ERROR');
+  console.log('====================================================\n');
+})(); // <-- ¡Esto se ejecuta INMEDIATAMENTE!
+
 const unlinkAsync = promisify(fs.unlink);
 
 // ==================== VERIFICACIÓN DE VARIABLES RAILWAY ====================
