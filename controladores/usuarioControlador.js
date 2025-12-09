@@ -1,6 +1,7 @@
 import { pool } from '../configuracion/basedeDatos.js';
 import crypto from 'crypto';
-import { subirACloudinary, eliminarDeCloudinary, extraerPublicId } from '../configuracion/cloudinary.js';
+import * as cloudinaryModule from '../configuracion/cloudinary.js';
+const { subirACloudinary, eliminarDeCloudinary, extraerPublicId } = cloudinaryModule;
 
 // ==================== FUNCIONES DE BÚSQUEDA Y SEGUIMIENTO ====================
 
