@@ -7,8 +7,6 @@ import path from 'path';
 
 const unlinkAsync = promisify(fs.unlink);
 
-dotenv.config();
-
 // Configurar Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
