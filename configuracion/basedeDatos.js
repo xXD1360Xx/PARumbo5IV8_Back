@@ -1,43 +1,38 @@
 import pkg from 'pg';
 const { Pool } = pkg;
 
-// ========== CONFIGURACIÓN DINÁMICA ==========
-// Extraer configuración de DATABASE_URL
-const DATABASE_URL = process.env.DATABASE_URL;
+// ========== CONFIGURACIÓN POR VARIABLES SEPARADAS ==========
+// Obtener variables de entorno individuales
+const DB_HOST = process.env.DB_HOST || 'dpg-d5j544khg0os73egt53g-a.oregon-postgres.render.com';
+const DB_PORT = process.env.DB_PORT || 5432;
+const DB_NAME = process.env.DB_NAME || 'rumbo_db';
+const DB_USER = process.env.DB_USER || 'rumbo_database_user';
+const DB_PASSWORD = process.env.DB_PASSWORD || '20DKbW8rdRMAaf2WgaXRIjnPSCLPjBOu';
 
-// Parsear la URL de conexión 
-const parseDatabaseUrl = (url) => {
-  try {
-    const parsed = new URL(url);
-    
-    // Extraer hostname completo (sin puerto)
-    let host = parsed.hostname;
-    // Asegurar el subdominio correcto para Render.com
-    host = `${host}.oregon-postgres.render.com`;
-    
-    return {
-      host: host,
-      port: 5432,
-      database: parsed.pathname?.substring(1),
-      user: parsed.username,
-      password: parsed.password
-    };
-    
-  } catch (error) {
-    console.error('❌ Error parseando DATABASE_URL:', error.message);
-    return null;
-  }
-};
+// Mostrar información de conexión (sin contraseña completa por seguridad)
+console.log('🔍 Configuración PostgreSQL por variables separadas:');
+console.log(`   Host: ${DB_HOST}`);
+console.log(`   Puerto: ${DB_PORT}`);
+console.log(`   Base de datos: ${DB_NAME}`);
+console.log(`   Usuario: ${DB_USER}`);
+console.log(`   Contraseña: ${DB_PASSWORD ? '****' + DB_PASSWORD.substring(DB_PASSWORD.length - 4) : 'No definida'}`);
 
-const parsed = parseDatabaseUrl(DATABASE_URL);
-
-if (!parsed) {
-  console.error('❌ ERROR CRÍTICO: No se pudo obtener configuración de DB');
-  process.exit(1); // Detener la aplicación
+// Verificar que tenemos la información mínima necesaria
+if (!DB_HOST || !DB_USER || !DB_PASSWORD || !DB_NAME) {
+  console.error('❌ ERROR CRÍTICO: Faltan variables de entorno requeridas');
+  console.error('   Variables requeridas: DB_HOST, DB_USER, DB_PASSWORD, DB_NAME');
+  console.error('   Variables opcionales: DB_PORT (default: 5432)');
+  process.exit(1);
 }
 
-console.log('✅ Configuración obtenida de DATABASE_URL');
-const dbConfig = parsed;
+// Configuración directa sin parsear URL
+const dbConfig = {
+  host: DB_HOST,
+  port: parseInt(DB_PORT),
+  database: DB_NAME,
+  user: DB_USER,
+  password: DB_PASSWORD
+};
 
 // ========== CONFIGURACIÓN DEL POOL ==========
 const poolConfig = {
@@ -55,10 +50,7 @@ const poolConfig = {
   application_name: 'rumbo_backend'
 };
 
-console.log('📊 PostgreSQL configurado');
-console.log(`   Host: ${poolConfig.host}`);
-console.log(`   Database: ${poolConfig.database}`);
-console.log(`   User: ${poolConfig.user}`);
+console.log('✅ PostgreSQL configurado exitosamente');
 
 // ========== CREAR POOL ==========
 const pool = new Pool(poolConfig);
