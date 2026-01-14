@@ -5,7 +5,9 @@ import { verificarConexionDB } from './configuracion/basedeDatos.js';
 
 // ========== 1. VERIFICAR VARIABLES NORTHFLANK ==========
 console.log('\n🚀 ========== INICIANDO BACKEND EN NORTHFLANK ==========');
-console.log('📦 Variables de entorno disponibles:');
+
+// Pequeña espera para asegurar que Northflank haya inyectado todo
+await new Promise(resolve => setTimeout(resolve, 3000));
 
 // Verificar variables críticas
 const variablesCriticas = [
