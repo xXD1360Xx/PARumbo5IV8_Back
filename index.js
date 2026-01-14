@@ -9,7 +9,7 @@ console.log('\n🚀 ========== INICIANDO BACKEND RUMBO ==========');
 
 
 // Configurar SendGrid inmediatamente
-import sgMail from './config/sendgrid.js'; // Importa el ya configurado
+import sgMail from './configuracion/sendgrid.js'; // Importa el ya configurado
 
 // ========== 2. CARGAR CLOUDINARY ==========
 console.log('\n☁️ CARGANDO CLOUDINARY...');

@@ -7,7 +7,7 @@ import {
 } from '../controladores/autenticacionControlador.js';
 import { autenticarUsuario } from '../middleware/autenticacionMiddleware.js';
 
-import sgMail from '../config/sendgrid.js'; // ✅ CORRECTO
+import sgMail from '../configuracion/sendgrid.js'; // ✅ CORRECTO
 
 const router = express.Router();
 
