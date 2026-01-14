@@ -244,7 +244,7 @@ router.post('/enviarCorreo', async (req, res) => {
     // Configurar el email
     const msg = {
       to: correo,
-      from: 'cdmxrumbo@gmail.com',
+      from: 'proyectoaularumbo@gmail.com',
       subject: asunto,
       text: `Tu código de verificación es: ${codigo}`,
       html: `
