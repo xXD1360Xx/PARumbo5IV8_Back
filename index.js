@@ -30,6 +30,10 @@ variablesCriticas.forEach(variable => {
   }
 });
 
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+  console.log('process.env.SENDGRID_API_KEY');
+  console.log('✅ SendGrid configurado');
+
 // ========== 2. CARGAR CLOUDINARY DE FORMA SÍNCRONA ==========
 console.log('\n☁️ CARGANDO CLOUDINARY...');
 try {
