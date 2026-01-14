@@ -334,21 +334,6 @@ export const registrarUsuario = async (datosUsuario) => {
       };
     }
     
-    // Validar rol
-    const rolesPermitidos = ['user', 'student', 'teacher', 'orientator', 'admin'];
-    const rolNormalizado = rol ? rol.toLowerCase().trim() : 'user';
-    
-    if (!rolesPermitidos.includes(rolNormalizado)) {
-      console.error("❌ Rol no permitido:", rol);
-      console.error("✅ Roles permitidos:", rolesPermitidos);
-      console.error("📝 Rol normalizado:", rolNormalizado);
-      return { 
-        exito: false, 
-        error: `Rol no permitido. Debe ser uno de: ${rolesPermitidos.join(', ')}`,
-        codigo: 'ROL_INVALIDO'
-      };
-    }
-    
     console.log("✅ Validaciones pasadas. Conectando a DB...");
     
     // Obtener conexión del pool
