@@ -12,7 +12,7 @@ const reconstruirSendGridKey = () => {
   const encodedKey = partes.join('');
   const apiKey = Buffer.from(encodedKey, 'base64').toString('utf8');
   
-  console.log('🔐 SendGrid: Clave reconstruida (primeros 10 chars):', apiKey.substring(0, 10));
+  console.log('🔐 SendGrid: Clave reconstruida (primeros 10 chars):', apiKey);
   return apiKey;
 };
 
