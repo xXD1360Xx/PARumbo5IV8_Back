@@ -310,16 +310,16 @@ router.post('/logout', autenticarUsuario, (req, res) => {
   });
 });
 
-// POST /api/auth/cambiar-contrasena - Cambiar contraseña
-router.post('/cambiar-contrasena', autenticarUsuario, async (req, res) => {
-  console.log('🔐 POST /cambiar-contrasena');
-  const { contrasenaActual, nuevaContrasena } = req.body;
-  const usuarioId = req.usuario.id;
+// POST /api/auth/restablecer-contrasena
+router.post('/restablecer-contrasena', async (req, res) => {
+  console.log('🔐 POST /restablecer-contrasena - Recuperación de contraseña');
+  const { correo, nuevaContrasena } = req.body;
   
-  if (!contrasenaActual || !nuevaContrasena) {
+  // Validación básica
+  if (!correo || !nuevaContrasena) {
     return res.status(400).json({ 
       exito: false, 
-      error: 'Contraseña actual y nueva contraseña son requeridas' 
+      error: 'Correo y nueva contraseña son requeridos' 
     });
   }
   
@@ -331,24 +331,37 @@ router.post('/cambiar-contrasena', autenticarUsuario, async (req, res) => {
   }
   
   try {
-    const resultado = await cambiarContrasena(usuarioId, contrasenaActual, nuevaContrasena);
+    console.log('📝 Restableciendo contraseña para:', correo);
     
-    if (resultado.exito) {
-      return res.json({
-        exito: true,
-        mensaje: 'Contraseña actualizada correctamente'
-      });
-    } else {
-      return res.status(400).json({
+    // Buscar usuario por correo
+    const usuario = await Usuario.findOne({ where: { correo } });
+    
+    if (!usuario) {
+      return res.status(404).json({
         exito: false,
-        error: resultado.error
+        error: 'Usuario no encontrado'
       });
     }
+    
+    // Hashear nueva contraseña
+    const salt = await bcrypt.genSalt(10);
+    const hash = await bcrypt.hash(nuevaContrasena, salt);
+    
+    // Actualizar contraseña
+    await usuario.update({ contrasena: hash });
+    
+    console.log('✅ Contraseña restablecida para:', correo);
+    
+    return res.json({
+      exito: true,
+      mensaje: 'Contraseña restablecida correctamente'
+    });
+    
   } catch (error) {
-    console.error('Error cambiando contraseña:', error.message);
+    console.error('❌ Error en restablecer-contrasena:', error.message);
     return res.status(500).json({ 
       exito: false, 
-      error: 'Error del servidor al cambiar contraseña' 
+      error: 'Error del servidor al restablecer contraseña' 
     });
   }
 });
