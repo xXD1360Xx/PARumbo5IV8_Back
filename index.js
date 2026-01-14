@@ -7,37 +7,9 @@ import path from 'path';
 
 console.log('\n🚀 ========== INICIANDO BACKEND RUMBO ==========');
 
-// ========== 1. CLAVE SENDGRID OCULTA (Método Base64) ==========
-const reconstruirSendGridKey = () => {
-  // Partes de la clave en Base64
-  const partes = [
-    "U0cua3",  // SG.k
-    "l0SlN5",  // 9tJSy
-    "WkdUYX",  // ZGTau
-    "VGdHZX",  // FR-Gez
-    "M",       // 3
-    "zZ2VXdy5JdF85RU5Ra0R",  // geWw.It_9ENQkDr
-    "ycmF1Q3VLQkc2RmlHVC03MTE1WH",  // rauCuKBG6FiGT-7115X
-    "h2YVhMdEUyNWEtanU4"  // hvaXLtE25a-ju8
-  ];
-  
-  // Reconstruir y decodificar
-  const encodedKey = partes.join('');
-  const apiKey = Buffer.from(encodedKey, 'base64').toString('utf8');
-  
-  console.log('✅ SendGrid: Clave reconstruida');
-  return apiKey;
-};
 
 // Configurar SendGrid inmediatamente
-import sgMail from '@sendgrid/mail';
-try {
-  const sendGridApiKey = reconstruirSendGridKey();
-  sgMail.setApiKey(sendGridApiKey);
-  console.log('✅ SendGrid: Configurado correctamente');
-} catch (error) {
-  console.error('❌ SendGrid: Error configurando:', error.message);
-}
+import sgMail from './config/sendgrid.js'; // Importa el ya configurado
 
 // ========== 2. CARGAR CLOUDINARY ==========
 console.log('\n☁️ CARGANDO CLOUDINARY...');

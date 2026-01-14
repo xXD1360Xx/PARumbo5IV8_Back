@@ -6,14 +6,8 @@ import {
   cambiarContrasena  
 } from '../controladores/autenticacionControlador.js';
 import { autenticarUsuario } from '../middleware/autenticacionMiddleware.js';
-import sgMail from '@sendgrid/mail';
 
-// Configurar SendGrid
-if (process.env.SENDGRID_API_KEY) {
-  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-  console.log('process.env.SENDGRID_API_KEY');
-  console.log('✅ SendGrid configurado');
-}
+import sgMail from '../config/sendgrid.js'; // ✅ CORRECTO
 
 const router = express.Router();
 
