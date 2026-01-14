@@ -9,6 +9,13 @@ console.log('📦 Variables de entorno disponibles:');
 
 // Verificar variables críticas
 const variablesCriticas = [
+  'DB_HOST',
+  'DB_PORT',
+  'DB_NAME',
+  'DB_USER',
+  'DB_PASSWORD',
+  'ENTORNO',
+  'PORT',
   'JWT_SECRETO',
   'DATABASE_URL',
   'CLOUDINARY_CLOUD_NAME',
@@ -30,30 +37,31 @@ variablesCriticas.forEach(variable => {
   }
 });
 
-  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-  console.log('process.env.SENDGRID_API_KEY');
-  console.log('✅ SendGrid configurado');
+// Verificar SendGrid
+if (process.env.SENDGRID_API_KEY) {
+  import('@sendgrid/mail').then(({ default: sgMail }) => {
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+    console.log('✅ SendGrid configurado correctamente');
+  }).catch(error => {
+    console.error('❌ Error configurando SendGrid:', error.message);
+  });
+} else {
+  console.error('❌ SENDGRID_API_KEY no encontrada');
+}
 
-// ========== 2. CARGAR CLOUDINARY DE FORMA SÍNCRONA ==========
+// ========== 3. IMPORTAR CLOUDINARY DESPUÉS DE VERIFICAR ==========
 console.log('\n☁️ CARGANDO CLOUDINARY...');
 try {
-  // Usar import dinámico para forzar ejecución
-  const cloudinaryModule = await import('./configuracion/cloudinary.js');
+  // Importar solo DESPUÉS de verificar variables
+  const { cloudinary } = await import('./configuracion/cloudinary.js');
   console.log('✅ Cloudinary cargado exitosamente');
   
-  // Verificar configuración después de cargar
-  const cloudinary = cloudinaryModule.cloudinary;
+  // Verificar configuración
   const config = cloudinary.config();
-  
-  console.log('🔍 Verificando configuración Cloudinary:');
+  console.log('🔍 Verificación Cloudinary después de carga:');
   console.log(`   Cloud name: ${config.cloud_name || '❌ NO CONFIGURADO'}`);
   console.log(`   API Key: ${config.api_key ? '✅ CONFIGURADO' : '❌ NO CONFIGURADO'}`);
   console.log(`   API Secret: ${config.api_secret ? '✅ CONFIGURADO' : '❌ NO CONFIGURADO'}`);
-  
-  if (!config.api_key) {
-    console.error('❌ ERROR CRÍTICO: Cloudinary no tiene API Key configurada');
-    console.error('   Verifica en Northflank: Variables → CLOUDINARY_API_KEY');
-  }
   
 } catch (error) {
   console.error('❌ ERROR cargando Cloudinary:', error.message);
