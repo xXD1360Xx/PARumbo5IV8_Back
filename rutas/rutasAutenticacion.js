@@ -3,7 +3,8 @@ import {
   iniciarSesion, 
   registrarUsuario, 
   loginConGoogle,
-  cambiarContrasena  
+  cambiarContrasena,
+  restablecerContrasena
 } from '../controladores/autenticacionControlador.js';
 import { autenticarUsuario } from '../middleware/autenticacionMiddleware.js';
 
@@ -313,6 +314,7 @@ router.post('/logout', autenticarUsuario, (req, res) => {
 // POST /api/auth/restablecer-contrasena
 router.post('/restablecer-contrasena', async (req, res) => {
   console.log('🔐 POST /restablecer-contrasena - Recuperación de contraseña');
+  
   const { correo, nuevaContrasena } = req.body;
   
   // Validación básica
@@ -333,35 +335,37 @@ router.post('/restablecer-contrasena', async (req, res) => {
   try {
     console.log('📝 Restableciendo contraseña para:', correo);
     
-    // Buscar usuario por correo
-    const usuario = await Usuario.findOne({ where: { correo } });
+    // Usar la función del controlador
+    const resultado = await restablecerContrasena(correo, nuevaContrasena);
     
-    if (!usuario) {
-      return res.status(404).json({
+    if (resultado.exito) {
+      return res.json({
+        exito: true,
+        mensaje: resultado.mensaje || 'Contraseña restablecida correctamente'
+      });
+    } else {
+      // Mapear códigos de error a status HTTP apropiados
+      let statusCode = 400;
+      if (resultado.codigo === 'USUARIO_NO_ENCONTRADO') {
+        statusCode = 404;
+      } else if (resultado.codigo === 'ERROR_SERVIDOR') {
+        statusCode = 500;
+      }
+      
+      return res.status(statusCode).json({
         exito: false,
-        error: 'Usuario no encontrado'
+        error: resultado.error,
+        codigo: resultado.codigo
       });
     }
     
-    // Hashear nueva contraseña
-    const salt = await bcrypt.genSalt(10);
-    const hash = await bcrypt.hash(nuevaContrasena, salt);
-    
-    // Actualizar contraseña
-    await usuario.update({ contrasena: hash });
-    
-    console.log('✅ Contraseña restablecida para:', correo);
-    
-    return res.json({
-      exito: true,
-      mensaje: 'Contraseña restablecida correctamente'
-    });
-    
   } catch (error) {
-    console.error('❌ Error en restablecer-contrasena:', error.message);
+    console.error('❌ Error en ruta restablecer-contrasena:', error.message);
+    console.error('🔧 Stack:', error.stack);
     return res.status(500).json({ 
       exito: false, 
-      error: 'Error del servidor al restablecer contraseña' 
+      error: 'Error del servidor al restablecer contraseña',
+      codigo: 'ERROR_INTERNO'
     });
   }
 });

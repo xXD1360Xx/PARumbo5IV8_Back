@@ -406,7 +406,7 @@ export const registrarUsuario = async (datosUsuario) => {
       full_name: nombre.trim(),
       email: email.trim().toLowerCase(),
       password: '[HASH SHA256]',
-      role: rolNormalizado
+      role: rol
     });
     
     const result = await client.query(insertQuery, [
@@ -415,7 +415,7 @@ export const registrarUsuario = async (datosUsuario) => {
       nombre.trim(),
       email.trim().toLowerCase(),
       passwordHash,
-      rolNormalizado
+      rol
     ]);
     
     console.log("✅ INSERT exitoso. Resultado:", result.rows[0]);
@@ -874,5 +874,73 @@ export const obtenerEstructuraUsers = async () => {
     return null;
   } finally {
     if (client) client.release();
+  }
+};
+
+// Restablecer contraseña (para recuperación SIN contraseña actual) - USANDO SHA256
+export const restablecerContrasena = async (correo, nuevaContrasena) => {
+  let client;
+  
+  try {
+    console.log("🔍 [CONTROLADOR] Restablecer contraseña para:", correo);
+    
+    // Validar nueva contraseña
+    if (nuevaContrasena.length < 6) {
+      return { 
+        exito: false, 
+        error: 'La nueva contraseña debe tener al menos 6 caracteres',
+        codigo: 'CONTRASENA_CORTA'
+      };
+    }
+    
+    client = await pool.connect();
+    
+    // Buscar usuario por correo
+    const query = 'SELECT id, email, username FROM _users WHERE email = $1';
+    const result = await client.query(query, [correo]);
+    
+    if (result.rows.length === 0) {
+      return { 
+        exito: false, 
+        error: 'Usuario no encontrado',
+        codigo: 'USUARIO_NO_ENCONTRADO'
+      };
+    }
+    
+    const usuario = result.rows[0];
+    console.log("✅ Usuario encontrado:", usuario.email);
+    
+    // 🔥 Hash de la nueva contraseña CON SHA256
+    const nuevaPasswordHash = crypto
+      .createHash('sha256')
+      .update(nuevaContrasena)
+      .digest('hex')
+      .toLowerCase();
+    
+    console.log("🔑 Nuevo hash SHA256 generado");
+    
+    // Actualizar en la base de datos
+    const updateQuery = 'UPDATE _users SET password = $1, updated_at = NOW() WHERE id = $2';
+    await client.query(updateQuery, [nuevaPasswordHash, usuario.id]);
+    
+    console.log("✅ Contraseña restablecida con SHA256 para:", correo);
+    
+    return { 
+      exito: true,
+      mensaje: 'Contraseña restablecida correctamente'
+    };
+    
+  } catch (error) {
+    console.error('❌ Error en restablecerContrasena:', error.message);
+    console.error('🔧 Stack:', error.stack);
+    return { 
+      exito: false, 
+      error: 'Error del servidor al restablecer contraseña',
+      codigo: 'ERROR_SERVIDOR'
+    };
+  } finally {
+    if (client) {
+      client.release();
+    }
   }
 };
