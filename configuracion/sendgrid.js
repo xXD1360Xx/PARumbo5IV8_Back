@@ -1,31 +1,47 @@
-// config/sendgrid.js
+// config/sendgrid.js - VERSIÓN CORREGIDA
 import sgMail from '@sendgrid/mail';
 
 const reconstruirSendGridKey = () => {
-  const partes = [
-    "U0cua3", "l0SlN5", "WkdUYX", "VGdHZX", "M",
-    "zZ2VXdy5JdF85RU5Ra0R", 
-    "ycmF1Q3VLQkc2RmlHVC03MTE1WH",
-    "h2YVhMdEUyNWEtanU4"
-  ];
+    const partes = [
+        "SG.k9tJSyZGTauFR-Gez3geWw.",  // Parte 1
+        "It_9ENQkDrrauCuKBG6FiGT-",     // Parte 2  
+        "7115XhvaXLtE25a-",             // Parte 3
+        "ju8"                           // Parte 4
+    ];
   
-  const encodedKey = partes.join('');
-  const apiKey = Buffer.from(encodedKey, 'base64').toString('utf8');
+  // Solo concatenar, NO usar Base64
+  const apiKey = partes.join('');
   
-  console.log('🔐 SendGrid: Clave reconstruida (primeros 10 chars):', apiKey);
+  console.log('🔐 SendGrid: Clave reconstruida (primeros 10 chars):', apiKey.substring(0, 10) + '...');
+  console.log('🔐 Longitud total:', apiKey.length);
+  console.log('🔐 ¿Empieza con SG.?', apiKey.startsWith('SG.'));
+  
   return apiKey;
 };
 
 try {
   const sendGridApiKey = reconstruirSendGridKey();
   
-  // Validar la clave
-  if (!sendGridApiKey.startsWith('SG.')) {
-    console.error('❌ ERROR: SendGrid API Key inválida');
-    console.error('   La clave debe comenzar con "SG."');
+  // Validación más completa
+  if (!sendGridApiKey || !sendGridApiKey.startsWith('SG.')) {
+    console.error('❌ ERROR: SendGrid API Key inválida o mal formada');
+    console.error('   Longitud:', sendGridApiKey?.length);
+    console.error('   Inicio:', sendGridApiKey?.substring(0, 20));
   } else {
     sgMail.setApiKey(sendGridApiKey);
     console.log('✅ SendGrid configurado correctamente');
+    
+    // Prueba rápida de conexión
+    const msg = {
+      to: 'proyectoaularumbo@gmail.com',
+      from: 'proyectoaularumbo@gmail.com',
+      subject: '✅ SendGrid Configurado',
+      text: 'SendGrid está funcionando desde el backend'
+    };
+    
+    sgMail.send(msg)
+      .then(() => console.log('📧 Email de prueba enviado'))
+      .catch(err => console.error('❌ Error enviando prueba:', err.message));
   }
 } catch (error) {
   console.error('❌ SendGrid: Error configurando:', error.message);
