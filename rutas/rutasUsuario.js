@@ -18,7 +18,8 @@ import {
   obtenerSeguidores,
   obtenerSeguidos,
   verificarSiSigue,
-  buscarUsuariosPorRol
+  buscarUsuariosPorRol,
+  buscarUsuariosConFiltros, 
 } from '../controladores/usuarioControlador.js';
 import multer from 'multer';
 import path from 'path'
@@ -87,7 +88,7 @@ router.put('/perfil', autenticarUsuario, async (req, res) => {
     }
     
     // Roles permitidos
-    const rolesPermitidos = ['estudiante', 'egresado', 'maestro', 'admin'];
+      const rolesPermitidos = ['explorando', 'estudiante', 'egresado', 'profesor', 'docente', 'admin'];
     
     // Validar rol si se está actualizando
     if (req.body.role || req.body.rol) {
@@ -241,6 +242,77 @@ router.get('/perfil/:id', autenticarUsuario, async (req, res) => {
     res.status(statusCode).json({
       exito: false,
       error: mensajeError
+    });
+  }
+});
+
+// POST /api/usuario/buscar-con-filtros - Buscar usuarios con filtros avanzados
+router.post('/buscar-con-filtros', autenticarUsuario, async (req, res) => {
+  try {
+    const usuarioId = req.usuario.id;
+    const { 
+      termino,
+      rol,
+      carrera,
+      perfilVocacional,
+      areaConocimiento,
+      pagina = 1, 
+      limite = 50 
+    } = req.body;
+    
+    console.log('🔍 POST /usuario/buscar-con-filtros - Filtros recibidos:', {
+      usuarioId,
+      termino,
+      rol,
+      carrera,
+      perfilVocacional,
+      areaConocimiento,
+      pagina,
+      limite
+    });
+    
+    let usuarios;
+    
+    // Si hay término de búsqueda, buscar por término primero
+    if (termino && termino.trim().length >= 2) {
+      usuarios = await buscarUsuarios(termino.trim(), usuarioId, parseInt(pagina), parseInt(limite));
+    } else {
+      // Usar filtros avanzados
+      const filtros = {
+        rol: rol || 'todos',
+        carrera: carrera || 'todas',
+        perfilVocacional: perfilVocacional || 'todos',
+        areaConocimiento: areaConocimiento || 'todas'
+      };
+      
+      usuarios = await buscarUsuariosConFiltros(
+        filtros,
+        usuarioId,
+        parseInt(pagina),
+        parseInt(limite)
+      );
+    }
+    
+    res.json({
+      exito: true,
+      data: usuarios,
+      pagina: parseInt(pagina),
+      limite: parseInt(limite),
+      total: usuarios.length,
+      filtros: {
+        rol,
+        carrera,
+        perfilVocacional,
+        areaConocimiento
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Error en POST /usuario/buscar-con-filtros:', error);
+    res.status(500).json({
+      exito: false,
+      error: 'Error al buscar usuarios con filtros',
+      data: []
     });
   }
 });
@@ -616,7 +688,7 @@ router.get('/buscar-por-rol/:rol', autenticarUsuario, async (req, res) => {
     
     console.log('👥 GET /usuario/buscar-por-rol/:rol - Rol:', rol, 'Usuario ID:', usuarioId);
     
-    const rolesPermitidos = ['estudiante', 'egresado', 'maestro', 'admin'];
+      const rolesPermitidos = ['explorando', 'estudiante', 'egresado', 'profesor', 'docente', 'admin'];
     
     if (!rolesPermitidos.includes(rol)) {
       return res.status(400).json({

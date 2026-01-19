@@ -757,6 +757,116 @@ export const obtenerMiPerfil = async (usuarioId) => {
   }
 };
 
+// En tu controlador (usuarioControlador.js)
+export const buscarUsuariosConFiltros = async (filtros, usuarioActualId = null, pagina = 1, limite = 50) => {
+  try {
+    console.log('🔍 [CONTROLADOR] Buscando usuarios con filtros:', filtros);
+    
+    const offset = (pagina - 1) * limite;
+    const { rol, carrera, perfilVocacional, areaConocimiento } = filtros;
+    
+    // Construir query dinámica basada en filtros
+    let query = `
+      SELECT 
+        id,
+        username as nombre_usuario,
+        full_name as nombre,
+        email,
+        role as rol,
+        bio as biografia,
+        avatar_url as foto_perfil,
+        banner_url as portada,
+        is_private as privacidad,
+        followers_count as seguidores,
+        following_count as seguidos,
+        created_at as fecha_creacion,
+        carrera_actual,
+        ${usuarioActualId ? `
+          EXISTS(
+            SELECT 1 FROM user_follows 
+            WHERE follower_id = $1 AND following_id = _users.id
+          ) as lo_sigo,
+          _users.id = $1 as es_yo
+        ` : 'false as lo_sigo, false as es_yo'}
+      FROM _users 
+      WHERE 1=1
+    `;
+    
+    const params = usuarioActualId ? [usuarioActualId] : [];
+    let paramIndex = usuarioActualId ? 2 : 1;
+    
+    // Filtrar por rol
+    if (rol !== 'todos') {
+      const mapeoRoles = {
+        'explorando': ['explorando'],
+        'estudiante': ['estudiante'],
+        'egresado': ['egresado'],
+        'docente': ['docente', 'profesor'],
+        'admin': ['admin']
+      };
+      
+      const rolesABuscar = mapeoRoles[rol] || [rol];
+      const condicionesRol = rolesABuscar.map((r, i) => `role = $${paramIndex + i}`).join(' OR ');
+      query += ` AND (${condicionesRol})`;
+      params.push(...rolesABuscar);
+      paramIndex += rolesABuscar.length;
+    }
+    
+    // Filtrar por carrera (si el usuario tiene carrera_actual)
+    if (carrera === 'misma' && usuarioActualId) {
+      // Primero obtener la carrera del usuario actual
+      const usuarioActualQuery = `SELECT carrera_actual FROM _users WHERE id = $${paramIndex}`;
+      params.push(usuarioActualId);
+      paramIndex++;
+      
+      const usuarioActualResult = await pool.query(usuarioActualQuery, [usuarioActualId]);
+      const carreraUsuario = usuarioActualResult.rows[0]?.carrera_actual;
+      
+      if (carreraUsuario) {
+        query += ` AND carrera_actual = $${paramIndex}`;
+        params.push(carreraUsuario);
+        paramIndex++;
+      }
+    }
+    
+    // Agregar LIMIT y OFFSET
+    query += ` ORDER BY followers_count DESC, created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+    params.push(limite, offset);
+    
+    console.log('🔍 Query final:', query);
+    console.log('📊 Parámetros:', params);
+    
+    const result = await pool.query(query, params);
+    
+    // Filtrar según privacidad (código existente)
+    const usuariosProcesados = result.rows.map(usuario => {
+      if (usuario.privacidad && usuarioActualId && !usuario.es_yo && !usuario.lo_sigo) {
+        return {
+          id: usuario.id,
+          nombre_usuario: usuario.nombre_usuario,
+          nombre: 'Usuario privado',
+          rol: usuario.rol,
+          foto_perfil: null,
+          privacidad: true,
+          seguidores: 0,
+          seguidos: 0,
+          es_privado: true,
+          lo_sigo: usuario.lo_sigo,
+          es_yo: usuario.es_yo
+        };
+      }
+      return usuario;
+    });
+    
+    console.log(`✅ Encontrados ${usuariosProcesados.length} usuarios con filtros`);
+    return usuariosProcesados;
+    
+  } catch (error) {
+    console.error('❌ Error en buscarUsuariosConFiltros:', error);
+    throw error;
+  }
+};
+
 export const actualizarPerfilUsuario = async (usuarioId, datosActualizacion) => {
   try {
     console.log('✏️ [CONTROLADOR] Actualizando perfil para usuario ID:', usuarioId);
@@ -802,7 +912,7 @@ export const actualizarPerfilUsuario = async (usuarioId, datosActualizacion) => 
     
     // Validar rol si se está actualizando
     if (role) {
-      const rolesPermitidos = ['estudiante', 'egresado', 'maestro', 'admin'];
+      const rolesPermitidos = ['explorando', 'estudiante', 'egresado', 'profesor', 'docente', 'admin'];
       if (!rolesPermitidos.includes(role.toLowerCase())) {
         throw new Error(`Rol inválido. Los roles válidos son: ${rolesPermitidos.join(', ')}`);
       }
