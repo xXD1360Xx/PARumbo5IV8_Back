@@ -961,7 +961,15 @@ export const actualizarPerfilUsuario = async (usuarioId, datosActualizacion) => 
 export const buscarUsuariosPorRol = async (rol, usuarioActualId = null, pagina = 1, limite = 50) => {
   try {
     console.log('👥 [CONTROLADOR] Buscando usuarios por rol:', rol);
+    console.log('🔍 Tipo de rol recibido:', typeof rol);
+    console.log('🔍 Valor exacto del rol:', JSON.stringify(rol));
     
+    const rolesExistentes = await pool.query(
+      'SELECT DISTINCT role, COUNT(*) as cantidad FROM _users GROUP BY role ORDER BY role'
+    );
+    console.log('📊 Roles existentes en BD:', rolesExistentes.rows);
+    
+
     const offset = (pagina - 1) * limite;
     
     const query = `
