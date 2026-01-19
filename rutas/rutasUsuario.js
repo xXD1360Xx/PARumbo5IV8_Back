@@ -17,7 +17,8 @@ import {
   dejarDeSeguirUsuario,
   obtenerSeguidores,
   obtenerSeguidos,
-  verificarSiSigue
+  verificarSiSigue,
+  buscarUsuariosPorRol
 } from '../controladores/usuarioControlador.js';
 import multer from 'multer';
 import path from 'path'
