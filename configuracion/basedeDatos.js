@@ -3,11 +3,11 @@ const { Pool } = pkg;
 
 // ========== CONFIGURACIÓN POR VARIABLES SEPARADAS ==========
 // Obtener variables de entorno individuales
-const DB_HOST = process.env.DB_HOST || 'dpg-d5j544khg0os73egt53g-a.oregon-postgres.render.com';
+const DB_HOST = process.env.DB_HOST || 'aws-0-us-west-2.pooler.supabase.com';
 const DB_PORT = process.env.DB_PORT || 5432;
-const DB_NAME = process.env.DB_NAME || 'rumbo_db';
-const DB_USER = process.env.DB_USER || 'rumbo_database_user';
-const DB_PASSWORD = process.env.DB_PASSWORD || '20DKbW8rdRMAaf2WgaXRIjnPSCLPjBOu';
+const DB_NAME = process.env.DB_NAME || 'postgres';
+const DB_USER = process.env.DB_USER || 'postgres.cpbjuaphyqtnfxfzqhzi';
+const DB_PASSWORD = process.env.DB_PASSWORD || '1UMgFY3tlhsea56e';
 
 // Mostrar información de conexión (sin contraseña completa por seguridad)
 console.log('🔍 Configuración PostgreSQL por variables separadas:');
