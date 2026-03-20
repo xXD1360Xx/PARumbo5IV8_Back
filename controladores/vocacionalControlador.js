@@ -1,77 +1,86 @@
 import { pool } from '../configuracion/basedeDatos.js';
 
-// Obtener todos los resultados vocacionales de un usuario
+// Función auxiliar para parsear JSON (por si acaso)
+function parsearJSON(valor, valorPorDefecto) {
+  if (!valor) return valorPorDefecto;
+  if (typeof valor === 'object') return valor;
+  if (typeof valor === 'string') {
+    try {
+      return JSON.parse(valor);
+    } catch {
+      return valorPorDefecto;
+    }
+  }
+  return valorPorDefecto;
+}
+
+// ==================== OBTENER TODOS LOS RESULTADOS VOCACIONALES ====================
 export const obtenerResultadosVocacionales = async (usuarioId, usuarioActualId = null) => {
   try {
     console.log('🎓 [VOCACIONAL] Obteniendo resultados para usuario ID:', usuarioId);
-    
-    // Si no se especifica usuarioActualId, usar el mismo usuarioId
-    if (!usuarioActualId) {
-      usuarioActualId = usuarioId;
-    }
-    
+
+    if (!usuarioActualId) usuarioActualId = usuarioId;
+
     // Verificar permisos (si el perfil es privado)
     if (usuarioActualId !== usuarioId) {
-      const perfilQuery = `SELECT is_private FROM _users WHERE id = $1`;
+      const perfilQuery = `SELECT "isPrivate" FROM "User" WHERE id = $1`;
       const perfilResult = await pool.query(perfilQuery, [usuarioId]);
-      
-      if (perfilResult.rows.length > 0 && perfilResult.rows[0].is_private) {
-        // Perfil privado: verificar si el usuario actual sigue al usuario
+
+      if (perfilResult.rows.length > 0 && perfilResult.rows[0].isPrivate) {
         const sigueQuery = `
-          SELECT 1 FROM user_follows 
-          WHERE follower_id = $1 AND following_id = $2
+          SELECT 1 FROM "Follow"
+          WHERE "followerId" = $1 AND "followingId" = $2
         `;
         const sigueResult = await pool.query(sigueQuery, [usuarioActualId, usuarioId]);
-        
+
         if (sigueResult.rows.length === 0) {
           console.log('🚫 Sin permisos para ver resultados vocacionales de usuario privado');
           return [];
         }
       }
     }
-    
+
     const query = `
-      SELECT 
+      SELECT
         id,
-        user_id,
-        test_date,
-        resultados_completos,
-        top_carreras,
-        score_global,
-        zona_ikigai,
-        perfil_tecnologico,
-        perfil_cientifico,
-        perfil_salud,
-        perfil_administrativo,
-        perfil_social,
-        created_at,
-        updated_at
-      FROM user_vocational_results 
-      WHERE user_id = $1 
-      ORDER BY test_date DESC
+        "userId",
+        "perfilTecnologico",
+        "perfilCientifico",
+        "perfilSalud",
+        "perfilAdministrativo",
+        "perfilSocial",
+        "topCarreras",
+        "resultadosCompletos",
+        "scoreGlobal",
+        "zonaIkigai",
+        "createdAt",
+        "updatedAt"
+      FROM "VocalTestResult"
+      WHERE "userId" = $1
+      ORDER BY "createdAt" DESC
     `;
-    
+
     const result = await pool.query(query, [usuarioId]);
     console.log(`✅ Encontrados ${result.rows.length} resultados vocacionales`);
-    
-    // Parsear los JSON strings si es necesario
+
+    // Mapear a formato amigable (igual que antes)
     const resultados = result.rows.map(item => ({
       id: item.id,
-      user_id: item.user_id,
-      test_date: item.test_date,
-      resultados_completos: parsearJSON(item.resultados_completos, []),
-      top_carreras: parsearJSON(item.top_carreras, []),
-      score_global: parseFloat(item.score_global || 0),
-      zona_ikigai: item.zona_ikigai,
-      perfil_tecnologico: parseFloat(item.perfil_tecnologico || 0),
-      perfil_cientifico: parseFloat(item.perfil_cientifico || 0),
-      perfil_salud: parseFloat(item.perfil_salud || 0),
-      perfil_administrativo: parseFloat(item.perfil_administrativo || 0),
-      perfil_social: parseFloat(item.perfil_social || 0),
-      created_at: item.created_at,
-      updated_at: item.updated_at
+      user_id: item.userId,
+      test_date: item.createdAt,
+      resultados_completos: item.resultadosCompletos || [],
+      top_carreras: item.topCarreras || [],
+      score_global: parseFloat(item.scoreGlobal || 0),
+      zona_ikigai: item.zonaIkigai,
+      perfil_tecnologico: parseFloat(item.perfilTecnologico || 0),
+      perfil_cientifico: parseFloat(item.perfilCientifico || 0),
+      perfil_salud: parseFloat(item.perfilSalud || 0),
+      perfil_administrativo: parseFloat(item.perfilAdministrativo || 0),
+      perfil_social: parseFloat(item.perfilSocial || 0),
+      created_at: item.createdAt,
+      updated_at: item.updatedAt
     }));
-    
+
     return resultados;
   } catch (error) {
     console.error('❌ Error en obtenerResultadosVocacionales:', error);
@@ -79,83 +88,77 @@ export const obtenerResultadosVocacionales = async (usuarioId, usuarioActualId =
   }
 };
 
-// Obtener el último resultado vocacional
+// ==================== OBTENER EL ÚLTIMO RESULTADO VOCACIONAL ====================
 export const obtenerUltimoResultadoVocacional = async (usuarioId, usuarioActualId = null) => {
   try {
     console.log('🎓 [VOCACIONAL] Obteniendo último resultado para usuario ID:', usuarioId);
-    
-    // Si no se especifica usuarioActualId, usar el mismo usuarioId
-    if (!usuarioActualId) {
-      usuarioActualId = usuarioId;
-    }
-    
-    // Verificar permisos (si el perfil es privado)
+
+    if (!usuarioActualId) usuarioActualId = usuarioId;
+
     if (usuarioActualId !== usuarioId) {
-      const perfilQuery = `SELECT is_private FROM _users WHERE id = $1`;
+      const perfilQuery = `SELECT "isPrivate" FROM "User" WHERE id = $1`;
       const perfilResult = await pool.query(perfilQuery, [usuarioId]);
-      
-      if (perfilResult.rows.length > 0 && perfilResult.rows[0].is_private) {
-        // Perfil privado: verificar si el usuario actual sigue al usuario
+
+      if (perfilResult.rows.length > 0 && perfilResult.rows[0].isPrivate) {
         const sigueQuery = `
-          SELECT 1 FROM user_follows 
-          WHERE follower_id = $1 AND following_id = $2
+          SELECT 1 FROM "Follow"
+          WHERE "followerId" = $1 AND "followingId" = $2
         `;
         const sigueResult = await pool.query(sigueQuery, [usuarioActualId, usuarioId]);
-        
+
         if (sigueResult.rows.length === 0) {
           console.log('🚫 Sin permisos para ver último resultado vocacional de usuario privado');
           return null;
         }
       }
     }
-    
+
     const query = `
-      SELECT 
+      SELECT
         id,
-        user_id,
-        test_date,
-        resultados_completos,
-        top_carreras,
-        score_global,
-        zona_ikigai,
-        perfil_tecnologico,
-        perfil_cientifico,
-        perfil_salud,
-        perfil_administrativo,
-        perfil_social,
-        created_at,
-        updated_at
-      FROM user_vocational_results 
-      WHERE user_id = $1 
-      ORDER BY test_date DESC, created_at DESC
+        "userId",
+        "perfilTecnologico",
+        "perfilCientifico",
+        "perfilSalud",
+        "perfilAdministrativo",
+        "perfilSocial",
+        "topCarreras",
+        "resultadosCompletos",
+        "scoreGlobal",
+        "zonaIkigai",
+        "createdAt",
+        "updatedAt"
+      FROM "VocalTestResult"
+      WHERE "userId" = $1
+      ORDER BY "createdAt" DESC
       LIMIT 1
     `;
-    
+
     const result = await pool.query(query, [usuarioId]);
-    
+
     if (result.rows.length === 0) {
       console.log('ℹ️ No se encontraron resultados vocacionales');
       return null;
     }
-    
+
     const item = result.rows[0];
     const resultado = {
       id: item.id,
-      user_id: item.user_id,
-      test_date: item.test_date,
-      resultados_completos: parsearJSON(item.resultados_completos, []),
-      top_carreras: parsearJSON(item.top_carreras, []),
-      score_global: parseFloat(item.score_global || 0),
-      zona_ikigai: item.zona_ikigai,
-      perfil_tecnologico: parseFloat(item.perfil_tecnologico || 0),
-      perfil_cientifico: parseFloat(item.perfil_cientifico || 0),
-      perfil_salud: parseFloat(item.perfil_salud || 0),
-      perfil_administrativo: parseFloat(item.perfil_administrativo || 0),
-      perfil_social: parseFloat(item.perfil_social || 0),
-      created_at: item.created_at,
-      updated_at: item.updated_at
+      user_id: item.userId,
+      test_date: item.createdAt,
+      resultados_completos: item.resultadosCompletos || [],
+      top_carreras: item.topCarreras || [],
+      score_global: parseFloat(item.scoreGlobal || 0),
+      zona_ikigai: item.zonaIkigai,
+      perfil_tecnologico: parseFloat(item.perfilTecnologico || 0),
+      perfil_cientifico: parseFloat(item.perfilCientifico || 0),
+      perfil_salud: parseFloat(item.perfilSalud || 0),
+      perfil_administrativo: parseFloat(item.perfilAdministrativo || 0),
+      perfil_social: parseFloat(item.perfilSocial || 0),
+      created_at: item.createdAt,
+      updated_at: item.updatedAt
     };
-    
+
     console.log('✅ Último resultado encontrado ID:', resultado.id);
     return resultado;
   } catch (error) {
@@ -164,29 +167,24 @@ export const obtenerUltimoResultadoVocacional = async (usuarioId, usuarioActualI
   }
 };
 
-// Obtener estadísticas vocacionales
+// ==================== OBTENER ESTADÍSTICAS VOCACIONALES ====================
 export const obtenerEstadisticasVocacionales = async (usuarioId, usuarioActualId = null) => {
   try {
     console.log('📈 [VOCACIONAL] Obteniendo estadísticas para usuario ID:', usuarioId);
-    
-    // Si no se especifica usuarioActualId, usar el mismo usuarioId
-    if (!usuarioActualId) {
-      usuarioActualId = usuarioId;
-    }
-    
-    // Verificar permisos (si el perfil es privado)
+
+    if (!usuarioActualId) usuarioActualId = usuarioId;
+
     if (usuarioActualId !== usuarioId) {
-      const perfilQuery = `SELECT is_private FROM _users WHERE id = $1`;
+      const perfilQuery = `SELECT "isPrivate" FROM "User" WHERE id = $1`;
       const perfilResult = await pool.query(perfilQuery, [usuarioId]);
-      
-      if (perfilResult.rows.length > 0 && perfilResult.rows[0].is_private) {
-        // Perfil privado: verificar si el usuario actual sigue al usuario
+
+      if (perfilResult.rows.length > 0 && perfilResult.rows[0].isPrivate) {
         const sigueQuery = `
-          SELECT 1 FROM user_follows 
-          WHERE follower_id = $1 AND following_id = $2
+          SELECT 1 FROM "Follow"
+          WHERE "followerId" = $1 AND "followingId" = $2
         `;
         const sigueResult = await pool.query(sigueQuery, [usuarioActualId, usuarioId]);
-        
+
         if (sigueResult.rows.length === 0) {
           console.log('🚫 Sin permisos para ver estadísticas vocacionales de usuario privado');
           return {
@@ -199,59 +197,56 @@ export const obtenerEstadisticasVocacionales = async (usuarioId, usuarioActualId
         }
       }
     }
-    
-    // Obtener estadísticas generales
+
+    // Estadísticas generales
     const generalQuery = `
-      SELECT 
+      SELECT
         COUNT(*) as total_resultados,
-        AVG(score_global) as promedio_general,
-        MAX(test_date) as fecha_ultimo_resultado
-      FROM user_vocational_results 
-      WHERE user_id = $1
+        AVG("scoreGlobal") as promedio_general,
+        MAX("createdAt") as fecha_ultimo_resultado
+      FROM "VocalTestResult"
+      WHERE "userId" = $1
     `;
-    
     const generalResult = await pool.query(generalQuery, [usuarioId]);
     const general = generalResult.rows[0] || {};
-    
-    // Obtener distribución por zonas Ikigai
+
+    // Distribución por zonas Ikigai
     const zonasQuery = `
-      SELECT 
-        zona_ikigai,
+      SELECT
+        "zonaIkigai",
         COUNT(*) as cantidad
-      FROM user_vocational_results 
-      WHERE user_id = $1
-      GROUP BY zona_ikigai
+      FROM "VocalTestResult"
+      WHERE "userId" = $1
+      GROUP BY "zonaIkigai"
       ORDER BY cantidad DESC
     `;
-    
     const zonasResult = await pool.query(zonasQuery, [usuarioId]);
-    
+
     const total = parseInt(general.total_resultados || 0);
     const distribucion_zonas = zonasResult.rows.map(item => ({
-      zona_ikigai: item.zona_ikigai || 'No definida',
+      zona_ikigai: item.zonaIkigai || 'No definida',
       cantidad: parseInt(item.cantidad || 0),
       porcentaje: total > 0 ? Math.round((parseInt(item.cantidad || 0) / total) * 100) : 0
     }));
-    
-    // Obtener perfiles promedio
+
+    // Perfiles promedio
     const perfilesQuery = `
-      SELECT 
-        AVG(perfil_tecnologico) as prom_tecnologico,
-        AVG(perfil_cientifico) as prom_cientifico,
-        AVG(perfil_salud) as prom_salud,
-        AVG(perfil_administrativo) as prom_administrativo,
-        AVG(perfil_social) as prom_social
-      FROM user_vocational_results 
-      WHERE user_id = $1
+      SELECT
+        AVG("perfilTecnologico") as prom_tecnologico,
+        AVG("perfilCientifico") as prom_cientifico,
+        AVG("perfilSalud") as prom_salud,
+        AVG("perfilAdministrativo") as prom_administrativo,
+        AVG("perfilSocial") as prom_social
+      FROM "VocalTestResult"
+      WHERE "userId" = $1
     `;
-    
     const perfilesResult = await pool.query(perfilesQuery, [usuarioId]);
     const perfiles = perfilesResult.rows[0] || {};
-    
+
     const estadisticas = {
       total_resultados: total,
       promedio_general: general.promedio_general ? parseFloat(general.promedio_general).toFixed(2) : "0.00",
-      distribucion_zonas: distribucion_zonas,
+      distribucion_zonas,
       fecha_ultimo_resultado: general.fecha_ultimo_resultado,
       perfiles_promedio: {
         tecnologico: parseFloat(perfiles.prom_tecnologico || 0).toFixed(1),
@@ -262,7 +257,7 @@ export const obtenerEstadisticasVocacionales = async (usuarioId, usuarioActualId
       },
       tiene_permiso: true
     };
-    
+
     console.log('📊 Estadísticas vocacionales obtenidas');
     return estadisticas;
   } catch (error) {
@@ -284,44 +279,37 @@ export const obtenerEstadisticasVocacionales = async (usuarioId, usuarioActualId
   }
 };
 
-// Obtener top carreras específico
+// ==================== OBTENER TOP CARRERAS (del último resultado) ====================
 export const obtenerTopCarreras = async (usuarioId, usuarioActualId = null, limite = 5) => {
   try {
     console.log('🏆 [VOCACIONAL] Obteniendo top carreras para usuario ID:', usuarioId);
-    
-    // Si no se especifica usuarioActualId, usar el mismo usuarioId
-    if (!usuarioActualId) {
-      usuarioActualId = usuarioId;
-    }
-    
-    // Verificar permisos (si el perfil es privado)
+
+    if (!usuarioActualId) usuarioActualId = usuarioId;
+
     if (usuarioActualId !== usuarioId) {
-      const perfilQuery = `SELECT is_private FROM _users WHERE id = $1`;
+      const perfilQuery = `SELECT "isPrivate" FROM "User" WHERE id = $1`;
       const perfilResult = await pool.query(perfilQuery, [usuarioId]);
-      
-      if (perfilResult.rows.length > 0 && perfilResult.rows[0].is_private) {
+
+      if (perfilResult.rows.length > 0 && perfilResult.rows[0].isPrivate) {
         const sigueQuery = `
-          SELECT 1 FROM user_follows 
-          WHERE follower_id = $1 AND following_id = $2
+          SELECT 1 FROM "Follow"
+          WHERE "followerId" = $1 AND "followingId" = $2
         `;
         const sigueResult = await pool.query(sigueQuery, [usuarioActualId, usuarioId]);
-        
+
         if (sigueResult.rows.length === 0) {
           console.log('🚫 Sin permisos para ver top carreras de usuario privado');
           return [];
         }
       }
     }
-    
-    // Obtener el último resultado
+
     const ultimoResultado = await obtenerUltimoResultadoVocacional(usuarioId, usuarioActualId);
-    
-    if (!ultimoResultado || !ultimoResultado.resultados_completos || !Array.isArray(ultimoResultado.resultados_completos)) {
+    if (!ultimoResultado || !Array.isArray(ultimoResultado.resultados_completos)) {
       console.log('ℹ️ No hay resultados completos para extraer top carreras');
       return [];
     }
-    
-    // Extraer y ordenar carreras por puntuación
+
     const carreras = ultimoResultado.resultados_completos
       .sort((a, b) => {
         const puntA = typeof a === 'object' ? (a.puntuacion || 0) : 0;
@@ -349,7 +337,7 @@ export const obtenerTopCarreras = async (usuarioId, usuarioActualId = null, limi
           zona_ikigai: null
         };
       });
-    
+
     console.log(`✅ Top ${carreras.length} carreras obtenidas`);
     return carreras;
   } catch (error) {
@@ -358,31 +346,11 @@ export const obtenerTopCarreras = async (usuarioId, usuarioActualId = null, limi
   }
 };
 
-// Función auxiliar para parsear JSON
-function parsearJSON(valor, valorPorDefecto) {
-  if (!valor) return valorPorDefecto;
-  
-  if (typeof valor === 'object') {
-    return valor;
-  }
-  
-  if (typeof valor === 'string') {
-    try {
-      return JSON.parse(valor);
-    } catch (e) {
-      console.error('Error parseando JSON:', e);
-      return valorPorDefecto;
-    }
-  }
-  
-  return valorPorDefecto;
-}
-
-// Crear nuevo resultado vocacional
+// ==================== CREAR NUEVO RESULTADO VOCACIONAL ====================
 export const crearResultadoVocacional = async (usuarioId, datos) => {
   try {
     console.log('➕ [VOCACIONAL] Creando nuevo resultado para usuario ID:', usuarioId);
-    
+
     const {
       resultados_completos,
       perfil_tecnologico,
@@ -392,44 +360,53 @@ export const crearResultadoVocacional = async (usuarioId, datos) => {
       perfil_social,
       top_carreras,
       score_global,
-      zona_ikigai
+      zona_ikigai,
+      testId // ← IMPORTANTE: debe venir del frontend o tener un valor por defecto
     } = datos;
-    
+
+    if (!testId) {
+      throw new Error('testId es requerido para crear un resultado vocacional');
+    }
+
     const query = `
-      INSERT INTO user_vocational_results (
-        user_id,
-        test_date,
-        resultados_completos,
-        perfil_tecnologico,
-        perfil_cientifico,
-        perfil_salud,
-        perfil_administrativo,
-        perfil_social,
-        top_carreras,
-        score_global,
-        zona_ikigai,
-        created_at,
-        updated_at
-      ) VALUES ($1, CURRENT_TIMESTAMP, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      INSERT INTO "VocalTestResult" (
+        id,
+        "userId",
+        "testId",
+        "perfilTecnologico",
+        "perfilCientifico",
+        "perfilSalud",
+        "perfilAdministrativo",
+        "perfilSocial",
+        "topCarreras",
+        "resultadosCompletos",
+        "scoreGlobal",
+        "zonaIkigai",
+        "createdAt",
+        "updatedAt"
+      ) VALUES (
+        gen_random_uuid(),
+        $1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10, $11, NOW(), NOW()
+      )
       RETURNING *
     `;
-    
+
     const values = [
       usuarioId,
-      JSON.stringify(resultados_completos || []),
+      testId,
       parseFloat(perfil_tecnologico || 0),
       parseFloat(perfil_cientifico || 0),
       parseFloat(perfil_salud || 0),
       parseFloat(perfil_administrativo || 0),
       parseFloat(perfil_social || 0),
       JSON.stringify(top_carreras || []),
+      JSON.stringify(resultados_completos || []),
       parseFloat(score_global || 0),
       zona_ikigai || 'NO_DEFINIDA'
     ];
-    
+
     const result = await pool.query(query, values);
     console.log('✅ Resultado vocacional creado ID:', result.rows[0].id);
-    
     return result.rows[0];
   } catch (error) {
     console.error('❌ Error en crearResultadoVocacional:', error);
@@ -437,26 +414,25 @@ export const crearResultadoVocacional = async (usuarioId, datos) => {
   }
 };
 
-// Eliminar resultado vocacional
+// ==================== ELIMINAR RESULTADO VOCACIONAL ====================
 export const eliminarResultadoVocacional = async (resultadoId, usuarioId) => {
   try {
     console.log('🗑️ [VOCACIONAL] Eliminando resultado ID:', resultadoId);
-    
-    // Verificar que el resultado pertenece al usuario
-    const verificarQuery = `SELECT user_id FROM user_vocational_results WHERE id = $1`;
+
+    const verificarQuery = `SELECT "userId" FROM "VocalTestResult" WHERE id = $1`;
     const verificarResult = await pool.query(verificarQuery, [resultadoId]);
-    
+
     if (verificarResult.rows.length === 0) {
       throw new Error('Resultado no encontrado');
     }
-    
-    if (verificarResult.rows[0].user_id !== usuarioId) {
+
+    if (verificarResult.rows[0].userId !== usuarioId) {
       throw new Error('No tienes permiso para eliminar este resultado');
     }
-    
-    const query = `DELETE FROM user_vocational_results WHERE id = $1 RETURNING id`;
-    const result = await pool.query(query, [resultadoId]);
-    
+
+    const deleteQuery = `DELETE FROM "VocalTestResult" WHERE id = $1 RETURNING id`;
+    const result = await pool.query(deleteQuery, [resultadoId]);
+
     console.log('✅ Resultado eliminado ID:', resultadoId);
     return result.rows[0];
   } catch (error) {

@@ -5,7 +5,7 @@ import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 
-// Login normal (usuario/contraseña) - VERSIÓN SHA256
+// ==================== LOGIN NORMAL (USUARIO/CONTRASEÑA) ====================
 export const iniciarSesion = async (identificador, contrasena) => {
   let client;
   
@@ -29,9 +29,18 @@ export const iniciarSesion = async (identificador, contrasena) => {
     console.log("✅ Conexión a DB establecida");
     
     const query = `
-      SELECT id, full_name, email, username, role, password, 
-             created_at, avatar_url, banner_url, bio
-      FROM _users 
+      SELECT 
+        id, 
+        "fullName" as full_name, 
+        email, 
+        username, 
+        role, 
+        password, 
+        "createdAt" as created_at, 
+        "avatarUrl" as avatar_url, 
+        "bannerUrl" as banner_url, 
+        bio
+      FROM "User" 
       WHERE email = $1 OR username = $1
     `;
     
@@ -110,7 +119,7 @@ export const iniciarSesion = async (identificador, contrasena) => {
             .toLowerCase();
           
           await client.query(
-            'UPDATE _users SET password = $1 WHERE id = $2',
+            'UPDATE "User" SET password = $1, "updatedAt" = NOW() WHERE id = $2',
             [sha256Hash, usuario.id]
           );
           console.log("✅ Hash migrado a SHA256");
@@ -159,7 +168,7 @@ export const iniciarSesion = async (identificador, contrasena) => {
     
     console.log("✅ Contraseña válida");
     
-    // Preparar datos del usuario para respuesta
+    // Preparar datos del usuario para respuesta (mantener nombres en español para el frontend)
     const usuarioRespuesta = {
       id: usuario.id,
       nombre: usuario.full_name,
@@ -240,7 +249,7 @@ export const iniciarSesion = async (identificador, contrasena) => {
   }
 };
 
-// Registro manual - AHORA USANDO SHA256 PARA COMPATIBILIDAD CON LA WEB
+// ==================== REGISTRO MANUAL ====================
 export const registrarUsuario = async (datosUsuario) => {
   console.log("🔍 [BACKEND] Datos recibidos COMPLETOS:", JSON.stringify(datosUsuario, null, 2));
   
@@ -343,7 +352,7 @@ export const registrarUsuario = async (datosUsuario) => {
     // Verificar si el usuario ya existe
     console.log("🔍 Verificando si usuario ya existe...");
     const usuarioExistente = await client.query(
-      'SELECT id, email, username FROM _users WHERE email = $1 OR username = $2',
+      'SELECT id, email, username FROM "User" WHERE email = $1 OR username = $2',
       [email.trim().toLowerCase(), nombreUsuario.trim()]
     );
     
@@ -389,21 +398,21 @@ export const registrarUsuario = async (datosUsuario) => {
     const userId = uuidv4();
     console.log("📋 UUID generado:", userId);
     
-    // INSERT en la tabla _users
-    console.log("📝 Insertando usuario en tabla _users...");
+    // INSERT en la tabla "User"
+    console.log("📝 Insertando usuario en tabla \"User\"...");
     const insertQuery = `
-      INSERT INTO _users (
-        id, username, full_name, email, password, role, 
-        created_at, updated_at
+      INSERT INTO "User" (
+        id, username, "fullName", email, password, role, 
+        "createdAt", "updatedAt", provider, "isActive"
       ) 
-      VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
-      RETURNING id, username, full_name, email, role, created_at
+      VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW(), 'local', true)
+      RETURNING id, username, "fullName" as full_name, email, role, "createdAt" as created_at
     `;
     
     console.log("🔍 Ejecutando INSERT con datos:", {
       id: userId,
       username: nombreUsuario.trim(),
-      full_name: nombre.trim(),
+      fullName: nombre.trim(),
       email: email.trim().toLowerCase(),
       password: '[HASH SHA256]',
       role: rol
@@ -447,7 +456,7 @@ export const registrarUsuario = async (datosUsuario) => {
     
     console.log("✅ Token generado (primeros 20):", token.substring(0, 20) + '...');
     
-    // Preparar respuesta
+    // Preparar respuesta (mantener nombres en español)
     const respuestaUsuario = {
       id: nuevoUsuario.id,
       nombre: nuevoUsuario.full_name,
@@ -471,20 +480,19 @@ export const registrarUsuario = async (datosUsuario) => {
     
     // Manejo específico de errores
     if (error.message.includes('role') && error.message.includes('does not exist')) {
-      console.error("❌ ERROR: Columna 'role' no existe en tabla _users");
-      console.error("❌ Las columnas de _users deben ser: role (no rol)");
+      console.error("❌ ERROR: Columna 'role' no existe en tabla User");
       return { 
         exito: false, 
         error: 'Error de configuración de base de datos: columna incorrecta',
         codigo: 'COLUMNA_INCORRECTA',
-        detalle: 'Verifica que la tabla _users tiene columna "role"'
+        detalle: 'Verifica que la tabla User tiene columna "role"'
       };
     }
     
-    if (error.message.includes('_users') && error.message.includes('does not exist')) {
+    if (error.message.includes('User') && error.message.includes('does not exist')) {
       return { 
         exito: false, 
-        error: 'Error de configuración de base de datos: tabla _users no existe',
+        error: 'Error de configuración de base de datos: tabla User no existe',
         codigo: 'TABLA_NO_EXISTE'
       };
     }
@@ -520,7 +528,7 @@ export const registrarUsuario = async (datosUsuario) => {
   }
 };
 
-// Login con Google - VERSIÓN CORREGIDA
+// ==================== LOGIN CON GOOGLE ====================
 export const loginConGoogle = async (accessToken) => {
   let client;
   
@@ -584,10 +592,17 @@ export const loginConGoogle = async (accessToken) => {
       // Buscar usuario por email
       console.log("🔍 Buscando usuario con email:", respuesta.data.email);
       const query = `
-        SELECT id, full_name as nombre, email, username as nombre_usuario, 
-               role as rol, avatar_url as foto_perfil, created_at as fecha_creacion,
-               password
-        FROM _users WHERE email = $1
+        SELECT 
+          id, 
+          "fullName" as nombre, 
+          email, 
+          username as nombre_usuario, 
+          role as rol, 
+          "avatarUrl" as foto_perfil, 
+          "createdAt" as fecha_creacion,
+          password
+        FROM "User" 
+        WHERE email = $1
       `;
       const result = await client.query(query, [respuesta.data.email]);
       
@@ -600,11 +615,11 @@ export const loginConGoogle = async (accessToken) => {
         // Si el usuario existe pero no tiene avatar de Google, actualizarlo
         if (respuesta.data.picture && !usuario.foto_perfil) {
           const updateAvatar = await client.query(
-            'UPDATE _users SET avatar_url = $1, updated_at = NOW() WHERE id = $2 RETURNING avatar_url',
+            'UPDATE "User" SET "avatarUrl" = $1, "updatedAt" = NOW() WHERE id = $2 RETURNING "avatarUrl"',
             [respuesta.data.picture, usuario.id]
           );
           console.log("🔄 Avatar actualizado con foto de Google");
-          usuario.foto_perfil = updateAvatar.rows[0].avatar_url;
+          usuario.foto_perfil = updateAvatar.rows[0].avatarUrl;
         }
       } else {
         console.log("🆕 Creando nuevo usuario...");
@@ -626,14 +641,14 @@ export const loginConGoogle = async (accessToken) => {
         const avatar = respuesta.data.picture || 'https://res.cloudinary.com/de8qn7bm1/image/upload/v1762320292/Default_pfp.svg_j0obpx.png';
         
         const insertQuery = `
-          INSERT INTO _users (
-            id, username, full_name, email, role, avatar_url, 
-            created_at, updated_at
+          INSERT INTO "User" (
+            id, username, "fullName", email, role, "avatarUrl", 
+            "createdAt", "updatedAt", provider, "isActive"
           ) 
-          VALUES ($1, $2, $3, $4, 'user', $5, NOW(), NOW()) 
-          RETURNING id, username as nombre_usuario, full_name as nombre, 
-                   email, role as rol, avatar_url as foto_perfil, 
-                   created_at as fecha_creacion
+          VALUES ($1, $2, $3, $4, 'user', $5, NOW(), NOW(), 'google', true) 
+          RETURNING id, username as nombre_usuario, "fullName" as nombre, 
+                    email, role as rol, "avatarUrl" as foto_perfil, 
+                    "createdAt" as fecha_creacion
         `;
         
         const nuevoUsuario = await client.query(insertQuery, [
@@ -748,7 +763,7 @@ export const loginConGoogle = async (accessToken) => {
   }
 };
 
-// Cambiar contraseña - AHORA USANDO SHA256
+// ==================== CAMBIAR CONTRASEÑA ====================
 export const cambiarContrasena = async (usuarioId, contrasenaActual, nuevaContrasena) => {
   let client;
   
@@ -767,7 +782,7 @@ export const cambiarContrasena = async (usuarioId, contrasenaActual, nuevaContra
     client = await pool.connect();
     
     // Obtener usuario actual
-    const query = 'SELECT password FROM _users WHERE id = $1';
+    const query = 'SELECT password FROM "User" WHERE id = $1';
     const result = await client.query(query, [usuarioId]);
     
     if (result.rows.length === 0) {
@@ -815,7 +830,7 @@ export const cambiarContrasena = async (usuarioId, contrasenaActual, nuevaContra
       .toLowerCase();
     
     // Actualizar en la base de datos
-    const updateQuery = 'UPDATE _users SET password = $1, updated_at = NOW() WHERE id = $2';
+    const updateQuery = 'UPDATE "User" SET password = $1, "updatedAt" = NOW() WHERE id = $2';
     await client.query(updateQuery, [nuevaPasswordHash, usuarioId]);
     
     console.log("✅ Contraseña actualizada con SHA256 para usuario ID:", usuarioId);
@@ -839,7 +854,7 @@ export const cambiarContrasena = async (usuarioId, contrasenaActual, nuevaContra
   }
 };
 
-// Cerrar sesión
+// ==================== CERRAR SESIÓN ====================
 export const cerrarSesion = async (usuarioId) => {
   console.log("🔍 [CONTROLADOR] Cerrar sesión para usuario ID:", usuarioId);
   return { 
@@ -848,36 +863,7 @@ export const cerrarSesion = async (usuarioId) => {
   };
 };
 
-// Función para obtener estructura de _users (para debug)
-export const obtenerEstructuraUsers = async () => {
-  let client;
-  try {
-    client = await pool.connect();
-    
-    const columnas = await client.query(`
-      SELECT column_name, data_type, is_nullable, column_default
-      FROM information_schema.columns
-      WHERE table_schema = 'public' 
-        AND table_name = '_users'
-      ORDER BY ordinal_position
-    `);
-    
-    console.log('📋 Columnas de la tabla _users:');
-    columnas.rows.forEach(col => {
-      console.log(`   ${col.column_name} (${col.data_type}) - Nulo: ${col.is_nullable === 'YES' ? '✅ SÍ' : '❌ NO'}`);
-    });
-    
-    return columnas.rows;
-    
-  } catch (error) {
-    console.error('❌ Error obteniendo estructura:', error.message);
-    return null;
-  } finally {
-    if (client) client.release();
-  }
-};
-
-// Restablecer contraseña (para recuperación SIN contraseña actual) - USANDO SHA256
+// ==================== RESTABLECER CONTRASEÑA (RECUPERACIÓN) ====================
 export const restablecerContrasena = async (correo, nuevaContrasena) => {
   let client;
   
@@ -896,7 +882,7 @@ export const restablecerContrasena = async (correo, nuevaContrasena) => {
     client = await pool.connect();
     
     // Buscar usuario por correo
-    const query = 'SELECT id, email, username FROM _users WHERE email = $1';
+    const query = 'SELECT id, email, username FROM "User" WHERE email = $1';
     const result = await client.query(query, [correo]);
     
     if (result.rows.length === 0) {
@@ -920,7 +906,7 @@ export const restablecerContrasena = async (correo, nuevaContrasena) => {
     console.log("🔑 Nuevo hash SHA256 generado");
     
     // Actualizar en la base de datos
-    const updateQuery = 'UPDATE _users SET password = $1, updated_at = NOW() WHERE id = $2';
+    const updateQuery = 'UPDATE "User" SET password = $1, "updatedAt" = NOW() WHERE id = $2';
     await client.query(updateQuery, [nuevaPasswordHash, usuario.id]);
     
     console.log("✅ Contraseña restablecida con SHA256 para:", correo);
@@ -942,5 +928,34 @@ export const restablecerContrasena = async (correo, nuevaContrasena) => {
     if (client) {
       client.release();
     }
+  }
+};
+
+// ==================== FUNCIÓN AUXILIAR PARA DEBUG (OPCIONAL) ====================
+export const obtenerEstructuraUsers = async () => {
+  let client;
+  try {
+    client = await pool.connect();
+    
+    const columnas = await client.query(`
+      SELECT column_name, data_type, is_nullable, column_default
+      FROM information_schema.columns
+      WHERE table_schema = 'public' 
+        AND table_name = 'User'
+      ORDER BY ordinal_position
+    `);
+    
+    console.log('📋 Columnas de la tabla User:');
+    columnas.rows.forEach(col => {
+      console.log(`   ${col.column_name} (${col.data_type}) - Nulo: ${col.is_nullable === 'YES' ? '✅ SÍ' : '❌ NO'}`);
+    });
+    
+    return columnas.rows;
+    
+  } catch (error) {
+    console.error('❌ Error obteniendo estructura:', error.message);
+    return null;
+  } finally {
+    if (client) client.release();
   }
 };

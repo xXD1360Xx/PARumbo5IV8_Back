@@ -10,21 +10,21 @@ const verificarPermisoVerResultados = async (usuarioId, usuarioActualId) => {
     }
     
     // Verificar si el perfil es privado
-    const perfilQuery = `SELECT is_private FROM _users WHERE id = $1`;
+    const perfilQuery = `SELECT "isPrivate" FROM "User" WHERE id = $1`;
     const perfilResult = await pool.query(perfilQuery, [usuarioId]);
     
     if (perfilResult.rows.length === 0) {
       return false; // Usuario no existe
     }
     
-    if (!perfilResult.rows[0].is_private) {
+    if (!perfilResult.rows[0].isPrivate) {
       return true; // Perfil público
     }
     
     // Perfil privado: verificar si el usuario actual sigue al usuario
     const sigueQuery = `
-      SELECT 1 FROM user_follows 
-      WHERE follower_id = $1 AND following_id = $2
+      SELECT 1 FROM "Follow"
+      WHERE "followerId" = $1 AND "followingId" = $2
     `;
     const sigueResult = await pool.query(sigueQuery, [usuarioActualId, usuarioId]);
     
@@ -36,7 +36,7 @@ const verificarPermisoVerResultados = async (usuarioId, usuarioActualId) => {
   }
 };
 
-// Obtener resultados de tests de conocimiento de un usuario (para el frontend)
+// ==================== OBTENER RESULTADOS DE TESTS DE UN USUARIO ====================
 export const obtenerResultadosTestsUsuario = async (usuarioId, usuarioActualId = null) => {
   try {
     console.log('📊 [TESTS] Obteniendo resultados para usuario ID:', usuarioId);
@@ -53,15 +53,18 @@ export const obtenerResultadosTestsUsuario = async (usuarioId, usuarioActualId =
     }
     
     const query = `
-      SELECT 
-        id,
-        user_id,
-        test_id, 
-        score as puntuacion,
-        completed_at as fecha_completado
-      FROM _user_test_results 
-      WHERE user_id = $1 
-      ORDER BY completed_at DESC
+      SELECT
+        r.id,
+        r."userId" as user_id,
+        r."testId" as test_id,
+        r.score as puntuacion,
+        r."createdAt" as fecha_completado,
+        t.title as nombre_test,
+        t.description as descripcion_test
+      FROM "KnowledgeTestResult" r
+      LEFT JOIN "Test" t ON r."testId" = t.id
+      WHERE r."userId" = $1
+      ORDER BY r."createdAt" DESC
     `;
     
     const result = await pool.query(query, [usuarioId]);
@@ -74,8 +77,8 @@ export const obtenerResultadosTestsUsuario = async (usuarioId, usuarioActualId =
       test_id: item.test_id,
       score: item.puntuacion,
       completed_at: item.fecha_completado,
-      nombre: obtenerNombreTest(item.test_id),
-      area: obtenerAreaTest(item.test_id)
+      nombre: item.nombre_test || obtenerNombreTest(item.test_id),
+      area: item.descripcion_test || obtenerAreaTest(item.test_id)
     }));
     
     return {
@@ -104,7 +107,7 @@ export const obtenerResultadosUsuario = async (usuarioId, usuarioActualId) => {
   return obtenerResultadosTestsUsuario(usuarioId, usuarioActualId);
 };
 
-// Obtener estadísticas de tests con manejo de privacidad
+// ==================== OBTENER ESTADÍSTICAS DE TESTS ====================
 export const obtenerEstadisticasTests = async (usuarioId, usuarioActualId = null) => {
   try {
     console.log('📈 [TESTS] Obteniendo estadísticas para usuario ID:', usuarioId);
@@ -126,27 +129,29 @@ export const obtenerEstadisticasTests = async (usuarioId, usuarioActualId = null
     }
     
     const query = `
-      SELECT 
-        COUNT(*) as total_tests,
-        AVG(score) as promedio_general,
-        MAX(completed_at) as ultimo_test,
-        test_id,
+      SELECT
+        r."testId",
+        t.title as nombre_test,
         COUNT(*) as cantidad_por_test,
-        AVG(score) as promedio_por_test
-      FROM _user_test_results 
-      WHERE user_id = $1 
-      GROUP BY test_id
+        AVG(r.score) as promedio_por_test,
+        MAX(r."createdAt") as ultimo_test
+      FROM "KnowledgeTestResult" r
+      LEFT JOIN "Test" t ON r."testId" = t.id
+      WHERE r."userId" = $1
+      GROUP BY r."testId", t.title
       ORDER BY cantidad_por_test DESC
     `;
     
     const result = await pool.query(query, [usuarioId]);
     
     const total = result.rows.reduce((sum, row) => sum + parseInt(row.cantidad_por_test || 0), 0);
-    const promedio = result.rows[0] ? parseFloat(result.rows[0].promedio_general || 0) : 0;
+    const promedio = result.rows.length > 0
+      ? result.rows.reduce((sum, row) => sum + parseFloat(row.promedio_por_test || 0), 0) / result.rows.length
+      : 0;
     
     const distribucion = result.rows.map(row => ({
-      test_id: row.test_id,
-      nombre: obtenerNombreTest(row.test_id),
+      test_id: row.testId,
+      nombre: row.nombre_test || obtenerNombreTest(row.testId),
       cantidad: parseInt(row.cantidad_por_test || 0),
       promedio: parseFloat(row.promedio_por_test || 0)
     }));
@@ -177,101 +182,37 @@ export const obtenerEstadisticasTests = async (usuarioId, usuarioActualId = null
   }
 };
 
-// Obtener todos los tests disponibles (público - no requiere permiso)
+// ==================== OBTENER TESTS DISPONIBLES ====================
 export const obtenerTestsDisponibles = async () => {
   try {
     console.log('📝 [TESTS] Obteniendo tests disponibles');
     
-    // Intentar obtener de una tabla de tests si existe
-    let tests = [];
+    const query = `
+      SELECT
+        id,
+        title as nombre,
+        description as descripcion,
+        "estimatedMinutes" as duracion,
+        type as area,
+        status
+      FROM "Test"
+      WHERE status = 'PUBLISHED'
+      ORDER BY title
+    `;
     
-    try {
-      const consulta = `
-        SELECT 
-          id, 
-          nombre, 
-          descripcion, 
-          duracion_minutos as duracion,
-          total_preguntas as preguntas_total,
-          area,
-          icono,
-          activo
-        FROM tests_conocimiento 
-        WHERE activo = true
-        ORDER BY orden, nombre
-      `;
-      
-      const resultado = await pool.query(consulta);
-      tests = resultado.rows;
-    } catch (e) {
-      console.log('ℹ️ Tabla tests_conocimiento no existe, usando datos por defecto');
-    }
+    const result = await pool.query(query);
     
-    // Si no hay tests en BD, usar datos por defecto del frontend
-    if (tests.length === 0) {
-      tests = [
-        {
-          id: 1,
-          nombre: 'Matemáticas',
-          descripcion: 'Pon a prueba tus conocimientos matemáticos resolviendo problemas prácticos.',
-          duracion: 20,
-          preguntas_total: 10,
-          area: 'Ciencias Físico-Matemáticas',
-          icono: '🧮',
-          activo: true
-        },
-        {
-          id: 2,
-          nombre: 'Medico-Biológicas',
-          descripcion: 'Evalúa tus conocimientos de biología y ciencias médicas con ejercicios prácticos.',
-          duracion: 10,
-          preguntas_total: 8,
-          area: 'Ciencias Biológicas y de la Salud',
-          icono: '🧬',
-          activo: true
-        },
-        {
-          id: 3,
-          nombre: 'Ingeniería y Tecnología',
-          descripcion: 'Comprueba tu comprensión en conceptos de ingeniería y tecnología aplicados.',
-          duracion: 25,
-          preguntas_total: 12,
-          area: 'Ingenierías y Tecnologías',
-          icono: '⚙️',
-          activo: true
-        },
-        {
-          id: 4,
-          nombre: 'Sociales y Humanísticas',
-          descripcion: 'Pon a prueba tus conocimientos en historia, geografía y ciencias sociales.',
-          duracion: 10,
-          preguntas_total: 8,
-          area: 'Ciencias Sociales y Humanidades',
-          icono: '📚',
-          activo: true
-        },
-        {
-          id: 5,
-          nombre: 'Artes y Diseño',
-          descripcion: 'Evalúa tus conocimientos en artes y diseño mediante preguntas creativas.',
-          duracion: 10,
-          preguntas_total: 8,
-          area: 'Artes y Diseño',
-          icono: '🎨',
-          activo: true
-        },
-        {
-          id: 6,
-          nombre: 'Económicas y Administrativas',
-          descripcion: 'Mide tu comprensión en economía, administración y finanzas básicas.',
-          duracion: 10,
-          preguntas_total: 8,
-          area: 'Ciencias Económico-Administrativas',
-          icono: '📈',
-          activo: true
-        }
-      ];
-    }
+    // Mapear a formato esperado por el frontend
+    const tests = result.rows.map(test => ({
+      id: test.id,
+      nombre: test.nombre,
+      descripcion: test.descripcion || '',
+      duracion: test.duracion || 15,
+      preguntas_total: 10, // Este campo no está en la tabla; se puede calcular o poner por defecto
+      area: test.area || 'General',
+      icono: obtenerIconoPorArea(test.area),
+      activo: test.status === 'PUBLISHED'
+    }));
     
     return {
       exito: true,
@@ -280,127 +221,58 @@ export const obtenerTestsDisponibles = async () => {
     };
   } catch (error) {
     console.error('❌ Error en obtenerTestsDisponibles:', error);
+    // Fallback: devolver una lista vacía
     return {
-      exito: false,
+      exito: true,
       data: [],
-      error: error.message
+      total: 0,
+      mensaje: 'No se pudieron cargar los tests'
     };
   }
 };
 
-// Obtener detalles de un test específico
+// ==================== OBTENER DETALLES DE UN TEST ESPECÍFICO ====================
 export const obtenerDetallesTest = async (testId) => {
   try {
     console.log('🔍 [TESTS] Obteniendo detalles del test ID:', testId);
     
-    let test = null;
+    const query = `
+      SELECT
+        id,
+        title as nombre,
+        description as descripcion,
+        "estimatedMinutes" as duracion,
+        type as area,
+        status
+      FROM "Test"
+      WHERE id = $1
+      LIMIT 1
+    `;
     
-    try {
-      const query = `
-        SELECT 
-          id, 
-          nombre, 
-          descripcion, 
-          duracion_minutos as duracion,
-          total_preguntas as preguntas_total,
-          area,
-          icono,
-          instrucciones,
-          activo
-        FROM tests_conocimiento 
-        WHERE id = $1 AND activo = true
-        LIMIT 1
-      `;
-      
-      const result = await pool.query(query, [testId]);
-      
-      if (result.rows.length > 0) {
-        test = result.rows[0];
-      }
-    } catch (e) {
-      console.log('ℹ️ Tabla tests_conocimiento no existe, usando datos por defecto');
-    }
+    const result = await pool.query(query, [testId]);
     
-    // Si no existe en BD, usar datos por defecto
-    if (!test) {
-      const testsPorDefecto = {
-        1: {
-          id: 1,
-          nombre: 'Matemáticas',
-          descripcion: 'Pon a prueba tus conocimientos matemáticos resolviendo problemas prácticos.',
-          duracion: 20,
-          preguntas_total: 10,
-          area: 'Ciencias Físico-Matemáticas',
-          icono: '🧮',
-          instrucciones: 'Resuelve los problemas matemáticos seleccionando la respuesta correcta.'
-        },
-        2: {
-          id: 2,
-          nombre: 'Medico-Biológicas',
-          descripcion: 'Evalúa tus conocimientos de biología y ciencias médicas con ejercicios prácticos.',
-          duracion: 10,
-          preguntas_total: 8,
-          area: 'Ciencias Biológicas y de la Salud',
-          icono: '🧬',
-          instrucciones: 'Selecciona la respuesta correcta para cada pregunta sobre biología y ciencias médicas.'
-        },
-        3: {
-          id: 3,
-          nombre: 'Ingeniería y Tecnología',
-          descripcion: 'Comprueba tu comprensión en conceptos de ingeniería y tecnología aplicados.',
-          duracion: 25,
-          preguntas_total: 12,
-          area: 'Ingenierías y Tecnologías',
-          icono: '⚙️',
-          instrucciones: 'Responde las preguntas sobre conceptos básicos de ingeniería y tecnología.'
-        },
-        4: {
-          id: 4,
-          nombre: 'Sociales y Humanísticas',
-          descripcion: 'Pon a prueba tus conocimientos en historia, geografía y ciencias sociales.',
-          duracion: 10,
-          preguntas_total: 8,
-          area: 'Ciencias Sociales y Humanidades',
-          icono: '📚',
-          instrucciones: 'Demuestra tus conocimientos en ciencias sociales y humanidades.'
-        },
-        5: {
-          id: 5,
-          nombre: 'Artes y Diseño',
-          descripcion: 'Evalúa tus conocimientos en artes y diseño mediante preguntas creativas.',
-          duracion: 10,
-          preguntas_total: 8,
-          area: 'Artes y Diseño',
-          icono: '🎨',
-          instrucciones: 'Responde preguntas sobre arte, diseño y creatividad.'
-        },
-        6: {
-          id: 6,
-          nombre: 'Económicas y Administrativas',
-          descripcion: 'Mide tu comprensión en economía, administración y finanzas básicas.',
-          duracion: 10,
-          preguntas_total: 8,
-          area: 'Ciencias Económico-Administrativas',
-          icono: '📈',
-          instrucciones: 'Responde preguntas sobre economía, administración y finanzas.'
-        }
-      };
-      
-      test = testsPorDefecto[testId] || {
-        id: testId,
-        nombre: `Test #${testId}`,
-        descripcion: 'Test de conocimiento',
-        duracion: 15,
-        preguntas_total: 10,
-        area: 'General',
-        icono: '📝',
-        instrucciones: 'Responde las siguientes preguntas seleccionando la opción correcta.'
+    if (result.rows.length === 0) {
+      return {
+        exito: false,
+        data: null,
+        mensaje: 'Test no encontrado'
       };
     }
+    
+    const test = result.rows[0];
     
     return {
       exito: true,
-      data: test
+      data: {
+        id: test.id,
+        nombre: test.nombre,
+        descripcion: test.descripcion || '',
+        duracion: test.duracion || 15,
+        preguntas_total: 10, // Ajustar si hay información real
+        area: test.area || 'General',
+        icono: obtenerIconoPorArea(test.area),
+        instrucciones: test.descripcion || 'Responde las siguientes preguntas.'
+      }
     };
   } catch (error) {
     console.error('❌ Error en obtenerDetallesTest:', error);
@@ -412,19 +284,27 @@ export const obtenerDetallesTest = async (testId) => {
   }
 };
 
-// Registrar nuevo resultado de test
+// ==================== REGISTRAR NUEVO RESULTADO DE TEST ====================
 export const registrarResultadoTest = async (usuarioId, testId, puntuacion, detalles = {}) => {
   try {
     console.log('📝 [TESTS] Registrando resultado para usuario ID:', usuarioId, 'test ID:', testId);
     
+    // Extraer campos esperados por KnowledgeTestResult
+    const { correctAnswers, totalQuestions } = detalles;
+    
     const query = `
-      INSERT INTO _user_test_results (
-        user_id,
-        test_id,
+      INSERT INTO "KnowledgeTestResult" (
+        id,
+        "userId",
+        "testId",
         score,
-        completed_at,
-        detalles
-      ) VALUES ($1, $2, $3, CURRENT_TIMESTAMP, $4)
+        "correctAnswers",
+        "totalQuestions",
+        "createdAt"
+      ) VALUES (
+        gen_random_uuid(),
+        $1, $2, $3, $4, $5, NOW()
+      )
       RETURNING *
     `;
     
@@ -432,7 +312,8 @@ export const registrarResultadoTest = async (usuarioId, testId, puntuacion, deta
       usuarioId,
       testId,
       parseFloat(puntuacion),
-      JSON.stringify(detalles)
+      correctAnswers || 0,
+      totalQuestions || 0
     ];
     
     const result = await pool.query(query, values);
@@ -453,13 +334,13 @@ export const registrarResultadoTest = async (usuarioId, testId, puntuacion, deta
   }
 };
 
-// Actualizar resultado existente
+// ==================== ACTUALIZAR RESULTADO EXISTENTE ====================
 export const actualizarResultadoTest = async (resultadoId, usuarioId, datos) => {
   try {
     console.log('🔄 [TESTS] Actualizando resultado ID:', resultadoId);
     
     // Verificar que el resultado pertenece al usuario
-    const verificarQuery = `SELECT user_id FROM _user_test_results WHERE id = $1`;
+    const verificarQuery = `SELECT "userId" FROM "KnowledgeTestResult" WHERE id = $1`;
     const verificarResult = await pool.query(verificarQuery, [resultadoId]);
     
     if (verificarResult.rows.length === 0) {
@@ -469,28 +350,29 @@ export const actualizarResultadoTest = async (resultadoId, usuarioId, datos) => 
       };
     }
     
-    if (verificarResult.rows[0].user_id !== usuarioId) {
+    if (verificarResult.rows[0].userId !== usuarioId) {
       return {
         exito: false,
         mensaje: 'No tienes permiso para actualizar este resultado'
       };
     }
     
-    const { score, detalles } = datos;
+    const { score, correctAnswers, totalQuestions } = datos;
     
     const query = `
-      UPDATE _user_test_results 
-      SET 
+      UPDATE "KnowledgeTestResult"
+      SET
         score = COALESCE($1, score),
-        detalles = COALESCE($2, detalles),
-        updated_at = CURRENT_TIMESTAMP
-      WHERE id = $3
+        "correctAnswers" = COALESCE($2, "correctAnswers"),
+        "totalQuestions" = COALESCE($3, "totalQuestions")
+      WHERE id = $4
       RETURNING *
     `;
     
     const values = [
       score ? parseFloat(score) : null,
-      detalles ? JSON.stringify(detalles) : null,
+      correctAnswers ? parseInt(correctAnswers) : null,
+      totalQuestions ? parseInt(totalQuestions) : null,
       resultadoId
     ];
     
@@ -510,13 +392,13 @@ export const actualizarResultadoTest = async (resultadoId, usuarioId, datos) => 
   }
 };
 
-// Eliminar resultado de test
+// ==================== ELIMINAR RESULTADO DE TEST ====================
 export const eliminarResultadoTest = async (resultadoId, usuarioId) => {
   try {
     console.log('🗑️ [TESTS] Eliminando resultado ID:', resultadoId);
     
     // Verificar que el resultado pertenece al usuario
-    const verificarQuery = `SELECT user_id FROM _user_test_results WHERE id = $1`;
+    const verificarQuery = `SELECT "userId" FROM "KnowledgeTestResult" WHERE id = $1`;
     const verificarResult = await pool.query(verificarQuery, [resultadoId]);
     
     if (verificarResult.rows.length === 0) {
@@ -526,14 +408,14 @@ export const eliminarResultadoTest = async (resultadoId, usuarioId) => {
       };
     }
     
-    if (verificarResult.rows[0].user_id !== usuarioId) {
+    if (verificarResult.rows[0].userId !== usuarioId) {
       return {
         exito: false,
         mensaje: 'No tienes permiso para eliminar este resultado'
       };
     }
     
-    const query = `DELETE FROM _user_test_results WHERE id = $1 RETURNING id`;
+    const query = `DELETE FROM "KnowledgeTestResult" WHERE id = $1 RETURNING id`;
     const result = await pool.query(query, [resultadoId]);
     
     return {
@@ -550,24 +432,24 @@ export const eliminarResultadoTest = async (resultadoId, usuarioId) => {
   }
 };
 
-// Obtener el ranking de usuarios por test
+// ==================== OBTENER RANKING POR TEST ====================
 export const obtenerRankingPorTest = async (testId, limite = 10) => {
   try {
     console.log('🏆 [TESTS] Obteniendo ranking para test ID:', testId);
     
     const query = `
-      SELECT 
-        utr.user_id,
+      SELECT
+        r."userId" as user_id,
         u.username,
-        u.full_name,
-        utr.score as puntuacion,
-        utr.completed_at as fecha_completado,
-        RANK() OVER (ORDER BY utr.score DESC, utr.completed_at ASC) as posicion
-      FROM _user_test_results utr
-      JOIN _users u ON utr.user_id = u.id
-      WHERE utr.test_id = $1 
-        AND u.is_private = false  -- Solo usuarios públicos
-      ORDER BY utr.score DESC, utr.completed_at ASC
+        u."fullName" as full_name,
+        r.score as puntuacion,
+        r."createdAt" as fecha_completado,
+        RANK() OVER (ORDER BY r.score DESC, r."createdAt" ASC) as posicion
+      FROM "KnowledgeTestResult" r
+      JOIN "User" u ON r."userId" = u.id
+      WHERE r."testId" = $1
+        AND u."isPrivate" = false  -- Solo usuarios públicos
+      ORDER BY r.score DESC, r."createdAt" ASC
       LIMIT $2
     `;
     
@@ -588,7 +470,7 @@ export const obtenerRankingPorTest = async (testId, limite = 10) => {
   }
 };
 
-// Función auxiliar para obtener nombre del test por ID
+// ==================== FUNCIONES AUXILIARES ====================
 function obtenerNombreTest(testId) {
   const nombres = {
     1: 'Matemáticas',
@@ -598,11 +480,9 @@ function obtenerNombreTest(testId) {
     5: 'Artes y Diseño',
     6: 'Económicas y Administrativas'
   };
-  
   return nombres[testId] || `Test ${testId}`;
 }
 
-// Función auxiliar para obtener área del test por ID
 function obtenerAreaTest(testId) {
   const areas = {
     1: 'Ciencias Físico-Matemáticas',
@@ -612,6 +492,17 @@ function obtenerAreaTest(testId) {
     5: 'Artes y Diseño',
     6: 'Ciencias Económico-Administrativas'
   };
-  
   return areas[testId] || 'General';
+}
+
+function obtenerIconoPorArea(area) {
+  const iconos = {
+    'MATHEMATICS': '🧮',
+    'BIOLOGY': '🧬',
+    'ENGINEERING': '⚙️',
+    'SOCIAL_SCIENCES': '📚',
+    'ARTS': '🎨',
+    'ECONOMICS': '📈'
+  };
+  return iconos[area] || '📝';
 }

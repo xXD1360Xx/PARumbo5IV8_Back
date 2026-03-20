@@ -7,7 +7,6 @@ import path from 'path';
 
 console.log('\n🚀 ========== INICIANDO BACKEND RUMBO ==========');
 
-
 // Configurar SendGrid inmediatamente
 import sgMail from './configuracion/sendgrid.js'; // Importa el ya configurado
 
@@ -61,7 +60,7 @@ console.log(`✅ Puerto: ${PORT}`);
 // ========== 4. CARGAR RUTAS ==========
 console.log('\n🔗 === CARGANDO RUTAS ===');
 
-let rutasAutenticacion, rutasUsuario, rutasTest, rutasVocacional;
+let rutasAutenticacion, rutasUsuario, rutasTest, rutasVocacional, rutasNotificaciones;
 
 try {
   rutasAutenticacion = (await import('./rutas/rutasAutenticacion.js')).default;
@@ -75,6 +74,10 @@ try {
   
   rutasVocacional = (await import('./rutas/rutasVocacional.js')).default;
   console.log('✅ RUTAS: Vocacional cargada');
+
+  rutasNotificaciones = (await import('./rutas/rutasNotificaciones.js')).default;
+  console.log('✅ RUTAS: Notificaciones cargada');
+
 } catch (error) {
   console.error('❌ Error cargando rutas:', error.message);
   // Crear rutas dummy para evitar crash
@@ -85,7 +88,7 @@ try {
       error: 'Servicio temporalmente no disponible' 
     });
   });
-  rutasAutenticacion = rutasUsuario = rutasTest = rutasVocacional = router;
+  rutasAutenticacion = rutasUsuario = rutasTest = rutasVocacional = rutasNotificaciones = router;
 }
 
 // ========== 5. CONFIGURAR EXPRESS ==========
@@ -173,6 +176,7 @@ app.use('/api/auth', rutasAutenticacion);
 app.use('/api/usuario', rutasUsuario);
 app.use('/api/tests', rutasTest);
 app.use('/api/vocacional', rutasVocacional);
+app.use('/api/notificaciones', rutasNotificaciones);
 
 console.log('✅ Todas las rutas montadas en /api');
 
@@ -186,7 +190,8 @@ app.use('*', (req, res) => {
       auth: ['POST /api/auth/login', 'POST /api/auth/register'],
       user: ['GET /api/usuario/perfil', 'PUT /api/usuario/perfil'],
       tests: ['POST /api/tests/guardar', 'GET /api/tests/historial'],
-      vocacional: ['POST /api/vocacional/resultado', 'GET /api/vocacional/historial']
+      vocacional: ['POST /api/vocacional/resultado', 'GET /api/vocacional/historial'],
+      notificaciones: ['GET /api/notificaciones', 'PUT /api/notificaciones/:id/leer', 'PUT /api/notificaciones/leer-todas', 'DELETE /api/notificaciones/:id']
     }
   });
 });
@@ -216,6 +221,9 @@ const iniciarServidor = async () => {
       console.log(`   👤  GET  /api/usuario/perfil`);
       console.log(`   📊  POST /api/tests/guardar`);
       console.log(`   🎯  POST /api/vocacional/resultado`);
+      console.log(`   🔔  GET  /api/notificaciones`);
+      console.log(`   ✅  PUT  /api/notificaciones/:id/leer`);
+      console.log(`   📨  PUT  /api/notificaciones/leer-todas`);
       console.log(`   🧪  GET  /test-email (prueba SendGrid)`);
       console.log('='.repeat(60));
     });
