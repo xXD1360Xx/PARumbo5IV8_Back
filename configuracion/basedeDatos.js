@@ -6,7 +6,7 @@ const DB_HOST = process.env.DB_HOST || 'aws-0-us-west-2.pooler.supabase.com';
 const DB_PORT = process.env.DB_PORT || 5432;
 const DB_NAME = process.env.DB_NAME || 'postgres';
 const DB_USER = process.env.DB_USER || 'postgres.cpbjuaphyqtnfxfzqhzi';
-const DB_PASSWORD = process.env.DB_PASSWORD || '1UMgFY3tlhsea56e';
+const DB_PASSWORD = process.env.DB_PASSWORD || 'eT2UkocN3oXWRtG4';
 
 // Mostrar solo información básica de conexión
 console.log('🔌 Configurando conexión a PostgreSQL...');
