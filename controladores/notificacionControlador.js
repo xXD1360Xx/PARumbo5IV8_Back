@@ -2,7 +2,7 @@ import {
   obtenerNotificacionesPorUsuario,
   marcarComoLeida,
   marcarTodasComoLeidas,
-  eliminarNotificacion
+  eliminarNotificacion as eliminarNotificacionModel
 } from '../modelos/notificacionModelo.js';
 
 export const obtenerNotificaciones = async (req, res) => {
@@ -50,7 +50,7 @@ export const eliminarNotificacion = async (req, res) => {
     const { id } = req.params;
     const usuarioId = req.usuario.id;
     
-    const notificacion = await eliminarNotificacion(id, usuarioId);
+    const notificacion = await eliminarNotificacionModel(id, usuarioId);
     if (!notificacion) {
       return res.status(404).json({ error: 'Notificación no encontrada' });
     }
