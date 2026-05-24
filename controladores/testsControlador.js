@@ -196,7 +196,6 @@ export const obtenerTestsDisponibles = async () => {
         type as area,
         status
       FROM "Test"
-      WHERE status = 'PUBLISHED'
       ORDER BY title
     `;
     
