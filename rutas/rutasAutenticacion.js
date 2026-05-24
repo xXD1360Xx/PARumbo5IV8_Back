@@ -7,7 +7,7 @@ import {
   restablecerContrasena
 } from '../controladores/autenticacionControlador.js';
 import { autenticarUsuario } from '../middleware/autenticacionMiddleware.js';
-
+import { verificarDisponibilidadUsername } from '../controladores/usuarioControlador.js';
 import sgMail from '../configuracion/sendgrid.js'; // ✅ CORRECTO
 
 const router = express.Router();
@@ -367,6 +367,23 @@ router.post('/restablecer-contrasena', async (req, res) => {
       error: 'Error del servidor al restablecer contraseña',
       codigo: 'ERROR_INTERNO'
     });
+  }
+});
+
+// GET /api/auth/verificar-username/:username - Verificar disponibilidad (público)
+router.get('/verificar-username/:username', async (req, res) => {
+  try {
+    const { username } = req.params;
+    const resultado = await verificarDisponibilidadUsername(username);
+    res.json({
+      exito: true,
+      disponible: resultado.disponible,
+      mensaje: resultado.mensaje,
+      sugerencias: resultado.sugerencias || []
+    });
+  } catch (error) {
+    console.error('Error verificando username:', error);
+    res.status(500).json({ exito: false, error: 'Error al verificar' });
   }
 });
 
