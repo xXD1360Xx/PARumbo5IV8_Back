@@ -3,10 +3,10 @@ import sgMail from '@sendgrid/mail';
 
 const reconstruirSendGridKey = () => {
     const partes = [
-        "SG.k9tJSyZGTauFR-Gez3geWw.",  // Parte 1
-        "It_9ENQkDrrauCuKBG6FiGT-",     // Parte 2  
-        "7115XhvaXLtE25a-",             // Parte 3
-        "ju8"                           // Parte 4
+        "SG.8GCoTyAzQPGFV8G8AO1qjg.",  // Parte 1
+        "tFDOk1YD6t-",     // Parte 2  
+        "gFl6Pw3Lg9R2Ydagk2z_",             // Parte 3
+        "aSU0_kdCqsoo"                           // Parte 4
     ];
   
   // Solo concatenar, NO usar Base64
