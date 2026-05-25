@@ -153,7 +153,7 @@ app.get('/test-email', async (req, res) => {
   try {
     const msg = {
       to: 'tellez.aguilar.diego@gmail.com',
-      from: 'proyectoaularumbo@gmail.com',
+      from: 'rumboverificacion@gmail.com',
       subject: 'Prueba SendGrid desde Rumbo',
       text: 'Si recibes esto, SendGrid está funcionando correctamente.',
       html: '<strong>SendGrid funcionando ✅</strong>'

@@ -12,7 +12,7 @@ export const sendEmail = async ({ to, subject, html, text = '' }) => {
   try {
     const msg = {
       to,
-      from: process.env.EMAIL_FROM || 'proyectoaularumbo@gmail.com',
+      from: process.env.EMAIL_FROM || 'rumboverificacion@gmail.com',
       subject,
       text: text || html.replace(/<[^>]*>/g, ''), // Si no hay texto, convertir HTML a texto
       html

@@ -33,8 +33,8 @@ try {
     
     // Prueba rápida de conexión
     const msg = {
-      to: 'proyectoaularumbo@gmail.com',
-      from: 'proyectoaularumbo@gmail.com',
+      to: 'tellez.aguilar.diego@gmail.com',
+      from: 'rumboverificacion@gmail.com',
       subject: '✅ SendGrid Configurado',
       text: 'SendGrid está funcionando desde el backend'
     };
